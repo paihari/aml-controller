@@ -1,6 +1,0 @@
-# MLflow MCP Server Dependencies
-mcp>=0.1.0
-fastmcp>=0.1.0
-mlflow>=2.0.0
-requests>=2.31.0
-pydantic>=2.0.0
