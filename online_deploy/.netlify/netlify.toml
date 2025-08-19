@@ -1,0 +1,28 @@
+plugins = []
+headers = []
+redirects = []
+
+[functions]
+
+[functions."*"]
+
+[build]
+publish = "/Users/bantwal/projects/aml-controller/online_deploy/_site"
+publishOrigin = "ui"
+commandOrigin = "ui"
+base = "/Users/bantwal/projects/aml-controller/online_deploy"
+command = "bundle exec jekyll build"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
