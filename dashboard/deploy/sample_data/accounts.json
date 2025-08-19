@@ -1,0 +1,26 @@
+[
+  {
+    "account_id": "ACC-12345",
+    "party_id": "PARTY-001",
+    "iban": "US12345678901234567890",
+    "opened_dt": "2020-05-15",
+    "status": "ACTIVE",
+    "country": "US"
+  },
+  {
+    "account_id": "ACC-56789", 
+    "party_id": "PARTY-002",
+    "iban": "US09876543210987654321",
+    "opened_dt": "2019-08-22",
+    "status": "ACTIVE",
+    "country": "US"
+  },
+  {
+    "account_id": "ACC-98765",
+    "party_id": "PARTY-003", 
+    "iban": "US11223344556677889900",
+    "opened_dt": "2021-03-10",
+    "status": "ACTIVE",
+    "country": "US"
+  }
+]

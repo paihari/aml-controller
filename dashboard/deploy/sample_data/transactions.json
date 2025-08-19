@@ -1,0 +1,93 @@
+[
+  {
+    "tx_id": "TXN-001",
+    "account_id": "ACC-12345",
+    "counterparty_account_id": "ACC-67890",
+    "amount": 5500.00,
+    "currency": "USD",
+    "value_date": "2024-01-15T10:30:00Z",
+    "transaction_type": "WIRE_TRANSFER",
+    "origin_country": "US",
+    "beneficiary_country": "CH",
+    "purpose": "Investment transfer",
+    "party_id": "PARTY-001"
+  },
+  {
+    "tx_id": "TXN-002",
+    "account_id": "ACC-12345",
+    "counterparty_account_id": "ACC-11111",
+    "amount": 900.00,
+    "currency": "USD",
+    "value_date": "2024-01-15T14:15:00Z",
+    "transaction_type": "ACH_CREDIT",
+    "origin_country": "US",
+    "beneficiary_country": "US",
+    "purpose": "Regular payment",
+    "party_id": "PARTY-001"
+  },
+  {
+    "tx_id": "TXN-003",
+    "account_id": "ACC-12345",
+    "counterparty_account_id": "ACC-22222",
+    "amount": 850.00,
+    "currency": "USD",
+    "value_date": "2024-01-15T16:45:00Z",
+    "transaction_type": "ACH_CREDIT",
+    "origin_country": "US",
+    "beneficiary_country": "US",
+    "purpose": "Regular payment",
+    "party_id": "PARTY-001"
+  },
+  {
+    "tx_id": "TXN-004",
+    "account_id": "ACC-12345",
+    "counterparty_account_id": "ACC-33333",
+    "amount": 920.00,
+    "currency": "USD",
+    "value_date": "2024-01-15T18:20:00Z",
+    "transaction_type": "ACH_CREDIT",
+    "origin_country": "US",
+    "beneficiary_country": "US",
+    "purpose": "Regular payment",
+    "party_id": "PARTY-001"
+  },
+  {
+    "tx_id": "TXN-005",
+    "account_id": "ACC-12345",
+    "counterparty_account_id": "ACC-44444",
+    "amount": 890.00,
+    "currency": "USD",
+    "value_date": "2024-01-15T19:10:00Z",
+    "transaction_type": "ACH_CREDIT",
+    "origin_country": "US",
+    "beneficiary_country": "US",
+    "purpose": "Regular payment",
+    "party_id": "PARTY-001"
+  },
+  {
+    "tx_id": "TXN-006",
+    "account_id": "ACC-56789",
+    "counterparty_account_id": "ACC-99999",
+    "amount": 75000.00,
+    "currency": "USD",
+    "value_date": "2024-01-16T09:00:00Z",
+    "transaction_type": "WIRE_TRANSFER",
+    "origin_country": "US",
+    "beneficiary_country": "IR",
+    "purpose": "Business payment",
+    "party_id": "PARTY-002"
+  },
+  {
+    "tx_id": "TXN-007",
+    "account_id": "ACC-98765",
+    "counterparty_account_id": "ACC-11111",
+    "amount": 1200.00,
+    "currency": "USD",
+    "value_date": "2024-01-16T11:30:00Z",
+    "transaction_type": "CHECK",
+    "origin_country": "US",
+    "beneficiary_country": "US",
+    "purpose": "Regular payment",
+    "party_id": "PARTY-003"
+  }
+]
