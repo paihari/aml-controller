@@ -1,0 +1,103 @@
+Step 6: ML model for alert triage (with MLOps). Goal: take the alerts you’ve generated (aml.gold.alerts), add investigator dispositions from your case DB, train a model that predicts “True Positive vs False Positive”, and integrate it back into your gold layer for prioritization.
+
+6A) Data prep for triage model
+	•	Investigator labels
+	•	From aml.cases table in Azure SQL, enrich each alert with disposition = {SAR, NotSAR, Escalated, etc.}.
+	•	Expose this table to Databricks with JDBC/AAD connector.
+	•	Feature engineering
+	•	Start with engineered features you already have: typology, risk_score, evidence JSON values.
+	•	Add transaction aggregates (velocity, corridor counts, round-trip flags).
+	•	Join with case disposition labels.
+Notebook snippet:
+import pandas as pd
+from pyspark.sql import functions as F
+
+alerts = spark.read.table("aml.gold.alerts")
+cases  = (spark.read
+          .format("jdbc")
+          .option("url", "jdbc:sqlserver://<server>.database.windows.net:1433;database=amlcases")
+          .option("dbtable", "aml.cases")
+          .option("authentication", "ActiveDirectoryPassword") # or token-based
+          .load()
+          .select("alert_id","status","disposition"))
+
+# Join alerts with case outcomes
+labeled = (alerts.join(cases, "alert_id")
+           .filter(F.col("disposition").isNotNull())
+           .withColumn("label", F.when(F.col("disposition")=="SAR",1).otherwise(0)))
+
+6B) Model training (XGBoost + MLflow)
+Use Databricks MLflow for experiment tracking.
+import mlflow
+import mlflow.sklearn
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, roc_auc_score
+
+pdf = labeled.toPandas()
+X = pdf[["risk_score"]]  # start simple; extend with parsed evidence fields
+y = pdf["label"]
+
+X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.2,random_state=42)
+
+with mlflow.start_run():
+    model = xgb.XGBClassifier(max_depth=4, n_estimators=100, learning_rate=0.1)
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    auc = roc_auc_score(y_test, model.predict_proba(X_test)[:,1])
+    mlflow.log_metric("auc", auc)
+    mlflow.sklearn.log_model(model, artifact_path="model", registered_model_name="aml_alert_triage")
+    print(classification_report(y_test,preds))
+	•	Model is registered as aml_alert_triage in MLflow Registry.
+
+6C) Batch scoring pipeline
+Create a job that periodically scores new alerts (e.g., daily).
+from mlflow.tracking import MlflowClient
+import mlflow.pyfunc
+
+client = MlflowClient()
+model = mlflow.pyfunc.load_model("models:/aml_alert_triage/Production")
+
+# Read new alerts (not yet in cases)
+alerts_new = spark.read.table("aml.gold.alerts").filter("created_ts >= current_date() - interval 1 day")
+pdf_new = alerts_new.toPandas()
+scores = model.predict_proba(pdf_new[["risk_score"]])[:,1]
+pdf_new["triage_score"] = scores
+
+scored = spark.createDataFrame(pdf_new)
+scored.write.mode("append").saveAsTable("aml.gold.alerts_scored")
+
+6D) CI/CD & promotion
+	•	Dev → Test → Prod model lifecycle
+	•	Train in dev with historical data.
+	•	Promote candidate model to “Staging” in MLflow.
+	•	Run evaluation notebooks; if KPIs met (AUC, precision@topK), promote to “Production”.
+	•	Automation with Databricks Jobs + GitHub Actions / ADO:
+	•	Code in /ml/triage_model/.
+	•	CI pipeline runs unit tests + model training with small sample.
+	•	CD pipeline triggers full training on Databricks, logs to MLflow, requests approval for Production.
+
+6E) Power BI integration
+Extend vw_alerts in Synapse to include triage_score from aml.gold.alerts_scored.
+CREATE OR ALTER VIEW vw_alerts_scored AS
+SELECT a.*, s.triage_score
+FROM vw_alerts a
+LEFT JOIN OPENROWSET(
+  BULK 'alerts_scored',
+  DATA_SOURCE = 'ds_gold',
+  FORMAT='DELTA'
+) AS s
+ON a.alert_id = s.alert_id;
+In Power BI:
+	•	Add triage_score to the Investigator Queue table.
+	•	Sort descending → investigators see highest priority alerts first.
+	•	Add measure “Precision @ Top 20%” for model monitoring.
+
+✅ MVP Complete after Step 6
+	•	Secure landing zone + Databricks workspace.
+	•	Medallion storage + Unity Catalog.
+	•	Baseline typology rules producing gold.alerts.
+	•	Power BI dashboards with queues/trends.
+	•	Case management loop in Azure SQL.
+	•	ML triage model trained, logged, and used to prioritize alerts.
+

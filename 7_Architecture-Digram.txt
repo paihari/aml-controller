@@ -1,0 +1,71 @@
+Architectzure Diagram  flowchart TD
+    subgraph AzureLandingZone["Landing Zone & Security"]
+        AAD[Entra ID RBAC / MI]
+        KV[Key Vault CMK]
+        VNET[Hub VNet + Private Endpoints]
+    end
+
+    subgraph DataLake["ADLS Gen2 (Medallion)"]
+        RAW[(raw)]
+        SILVER[(silver)]
+        GOLD[(gold)]
+        LOGS[(logs/checkpoints)]
+    end
+
+    subgraph Databricks["Azure Databricks + Unity Catalog"]
+        UC[Unity Catalog catalog=aml, raw/silver/gold schemas]
+        DLT[Delta Live Tables ingestion + rules ]
+        ML[MLflow / Model Registry Triage Model]
+    end
+
+    subgraph ExternalSources["Source Systems"]
+        CORE[Core Banking / Payments]
+        KYC[KYC / CRM]
+        WL[Sanctions Lists OFAC/EU/SECO APIs]
+    end
+
+    subgraph Analytics["Serving & BI"]
+        SYN[Synapse Serverless SQL views on gold]
+        PBI[Power BI Dashboards]
+    end
+
+    subgraph CaseMgmt["Case Management"]
+        SQLDB[(Azure SQL DB\naml.cases)]
+        PAPP[Power Apps / Power Automate]
+    end
+
+    %% Ingestion flows
+    CORE -->|ADF / Streaming| RAW
+    KYC  -->|ADF / Streaming| RAW
+    WL   -->|ADF Copy| RAW
+
+    %% Databricks pipelines
+    RAW -->|DLT Ingestion| SILVER
+    SILVER -->|DLT Rules + Enrichment| GOLD
+    UC --> DLT
+    DLT --> GOLD
+    GOLD -->|Delta CDF| SQLDB
+
+    %% ML loop
+    GOLD --> ML
+    SQLDB --> ML
+    ML -->|Batch Scoring| GOLD
+
+    %% Serving
+    GOLD --> SYN --> PBI
+
+    %% Case integration
+    SQLDB <--> PAPP
+    PBI -->|Investigators| PAPP
+
+    %% Security context
+    KV --> Databricks
+    KV --> DataLake
+    AAD --> Databricks
+    AAD --> PAPP
+    VNET --> DataLake
+    VNET --> Databricks
+    VNET --> SYN
+    VNET --> SQLDB
+
+

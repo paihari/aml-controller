@@ -1,0 +1,161 @@
+Step 2: Databricks workspace + storage layout (secure access to ADLS)
+Below is a focused plan + Terraform you can apply right away. Outcome: a Databricks workspace (VNet-injected, no public IPs), NAT egress, ADLS raw/silver/gold containers, and RBAC so clusters can read/write via private endpoints you already created.
+
+What we’ll create now
+	•	Network for Databricks
+	•	Two subnets in your hub VNet: snet-dbx-private, snet-dbx-public
+	•	NAT Gateway for egress (clusters have no public IP)
+	•	Databricks workspace
+	•	VNet injection into the above subnets
+	•	No Public IP (secure cluster connectivity)
+	•	System-assigned managed identity
+	•	ADLS containers (HNS): raw, silver, gold, quarantine, logs
+	•	RBAC: grant the Databricks workspace identity Storage Blob Data Contributor on the storage account
+
+Terraform (append to your /infra)
+Assumes you already applied Step 1 (RGs, VNet, PE subnet, Storage, Key Vault). Adjust names if you changed them earlier.
+databricks.tf
+# -------- Subnets for Databricks (in existing VNet) --------
+resource "azurerm_subnet" "dbx_public" {
+  name                 = "snet-dbx-public"
+  resource_group_name  = azurerm_resource_group.net.name
+  virtual_network_name = azurerm_virtual_network.hub.name
+  address_prefixes     = ["10.10.2.0/24"]
+}
+
+resource "azurerm_subnet" "dbx_private" {
+  name                 = "snet-dbx-private"
+  resource_group_name  = azurerm_resource_group.net.name
+  virtual_network_name = azurerm_virtual_network.hub.name
+  address_prefixes     = ["10.10.3.0/24"]
+}
+
+# -------- NAT for egress (no public IPs on clusters) --------
+resource "azurerm_public_ip" "nat" {
+  name                = "pip-aml-nat"
+  location            = azurerm_resource_group.net.location
+  resource_group_name = azurerm_resource_group.net.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = local.tags
+}
+
+resource "azurerm_nat_gateway" "nat" {
+  name                = "ngw-aml"
+  location            = azurerm_resource_group.net.location
+  resource_group_name = azurerm_resource_group.net.name
+  sku_name            = "Standard"
+  tags                = local.tags
+}
+
+resource "azurerm_nat_gateway_public_ip_association" "nat_assoc" {
+  nat_gateway_id       = azurerm_nat_gateway.nat.id
+  public_ip_address_id = azurerm_public_ip.nat.id
+}
+
+resource "azurerm_subnet_nat_gateway_association" "dbx_private_nat" {
+  subnet_id      = azurerm_subnet.dbx_private.id
+  nat_gateway_id = azurerm_nat_gateway.nat.id
+}
+
+resource "azurerm_subnet_nat_gateway_association" "dbx_public_nat" {
+  subnet_id      = azurerm_subnet.dbx_public.id
+  nat_gateway_id = azurerm_nat_gateway.nat.id
+}
+
+# -------- Databricks Workspace (VNet-injected, no public IP) --------
+resource "azurerm_resource_group" "dbx" {
+  name     = "rg-aml-dbx"
+  location = local.location
+  tags     = local.tags
+}
+
+resource "azurerm_databricks_workspace" "ws" {
+  name                                  = "dbw-aml-${var.env}"
+  resource_group_name                    = azurerm_resource_group.dbx.name
+  location                               = local.location
+  sku                                    = "premium"
+  managed_resource_group_id              = null
+  custom_parameters {
+    no_public_ip        = true
+    public_subnet_name  = azurerm_subnet.dbx_public.name
+    private_subnet_name = azurerm_subnet.dbx_private.name
+    virtual_network_id  = azurerm_virtual_network.hub.id
+  }
+
+  public_network_access_enabled = false
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = local.tags
+}
+
+# -------- ADLS containers for medallion --------
+resource "azurerm_storage_container" "raw" {
+  name                  = "raw"
+  storage_account_name  = azurerm_storage_account.adls.name
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "silver" {
+  name                  = "silver"
+  storage_account_name  = azurerm_storage_account.adls.name
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "gold" {
+  name                  = "gold"
+  storage_account_name  = azurerm_storage_account.adls.name
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "quarantine" {
+  name                  = "quarantine"
+  storage_account_name  = azurerm_storage_account.adls.name
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "logs" {
+  name                  = "logs"
+  storage_account_name  = azurerm_storage_account.adls.name
+  container_access_type = "private"
+}
+
+# -------- RBAC: let Databricks workspace MI access ADLS --------
+data "azurerm_client_config" "current" {}
+
+resource "azurerm_role_assignment" "dbx_sa_blob_contrib" {
+  scope                = azurerm_storage_account.adls.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_databricks_workspace.ws.identity[0].principal_id
+}
+Apply
+terraform init
+terraform apply -auto-approve \
+  -var="tenant_id=$(az account show --query tenantId -o tsv)" \
+  -var="sa_name=<your-same-storage-from-step1>"
+
+Post-provision: quick checks
+	•	Private resolution From a VM in the VNet, nslookup <sa>.blob.core.windows.net → should resolve to privatelink.blob… private IP.
+	•	Databricks workspace
+	•	Open the workspace URL (from Azure portal).
+	•	Create a cluster:
+	•	Policy: default is fine.
+	•	Enable “No public IP” (should be enforced).
+	•	Attach to workspace.
+	•	ADLS access from a Notebook (ABFS direct) Use OAuth passthrough with the workspace Managed Identity (recommended) or set Spark configs at cluster level if using a Service Principal. For MI-based access on Unity Catalog you’ll typically define a storage credential + external location (best practice). If you’re not on UC yet, a quick smoke test:
+# In a Databricks notebook (Python), just try to list the raw container:
+raw_path = "abfss://raw@<yourstorage>.dfs.core.windows.net/"
+display(dbutils.fs.ls(raw_path))
+(If permission denied, confirm the RBAC role assignment above has propagated—can take a couple of minutes.)
+
+What’s next (Step 3 preview)
+	•	Unity Catalog setup: metastore, storage credential (Key Vault-backed), external locations pointing to raw/silver/gold.
+	•	Ingestion bootstrap: ADF → Databricks Jobs for first sources (transactions, parties, sanctions).
+	•	Folder standards under each container, e.g.:
+	•	raw/source=<system>/ingestion_date=YYYY-MM-DD/
+	•	silver/domain=<entity>/yyyy=MM=dd/
+gold/mart=<subject>/
+

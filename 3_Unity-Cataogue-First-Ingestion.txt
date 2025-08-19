@@ -1,0 +1,276 @@
+Step 3: Unity Catalog + storage credentials + first ingestion (DLT) for your Databricks-first AML platform.
+Below are drop-in Terraform blocks plus a starter DLT notebook to land your first datasets into raw → silver → gold under Unity Catalog.
+
+3A) Azure Access Connector (for UC) + permissions
+Add to your existing Terraform (/infra) and apply in the same subscription/region.
+# ---------- Access Connector for Unity Catalog ----------
+resource "azurerm_databricks_access_connector" "uc" {
+  name                = "dac-aml-uc"
+  resource_group_name = azurerm_resource_group.dbx.name
+  location            = local.location
+  identity { type = "SystemAssigned" }
+  tags = local.tags
+}
+
+# Let UC's Managed Identity access ADLS (containers raw/silver/gold)
+resource "azurerm_role_assignment" "uc_sa_contrib" {
+  scope                = azurerm_storage_account.adls.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_databricks_access_connector.uc.identity[0].principal_id
+}
+Apply:
+terraform apply -auto-approve \
+  -var="tenant_id=$(az account show --query tenantId -o tsv)" \
+  -var="sa_name=<same-storage-name>"
+
+3B) Unity Catalog via Databricks provider
+Create a new folder /uc for UC resources.
+providers.tf
+terraform {
+  required_providers {
+    databricks = { source = "databricks/databricks", version = "~> 1.45" }
+  }
+}
+
+# Account-level provider (for metastore)
+provider "databricks" {
+  alias      = "accounts"
+  host       = "https://accounts.azuredatabricks.net"
+  account_id = var.databricks_account_id
+  auth_type  = "azure-cli"   # uses your az login
+}
+
+# Workspace-level provider (for catalogs/schemas/grants/pipeline)
+provider "databricks" {
+  alias                         = "ws"
+  host                          = azurerm_databricks_workspace.ws.workspace_url
+  azure_workspace_resource_id   = azurerm_databricks_workspace.ws.id
+  auth_type                     = "azure-cli"
+}
+variables.tf
+variable "databricks_account_id" { type = string }  # find in Databricks Admin Console
+variable "sa_name" { type = string }                # same ADLS from Step 1
+unity_catalog.tf
+# ----- Create a UC Metastore and assign it to this workspace -----
+resource "databricks_metastore" "aml" {
+  provider  = databricks.accounts
+  name      = "ms-aml"
+  region    = azurerm_resource_group.dbx.location  # must match workspace region
+  storage_root = "abfss://logs@${var.sa_name}.dfs.core.windows.net/uc/ms-aml"
+}
+
+resource "databricks_metastore_assignment" "ws_assign" {
+  provider     = databricks.accounts
+  metastore_id = databricks_metastore.aml.id
+  workspace_id = azurerm_databricks_workspace.ws.workspace_id
+  default_catalog_name = "hive_metastore" # or leave default; we’ll use catalog "aml"
+}
+
+# ----- Storage credential using Azure Access Connector MI -----
+resource "databricks_storage_credential" "aml" {
+  provider = databricks.ws
+  name     = "sc-aml"
+  azure_managed_identity {
+    access_connector_id = azurerm_databricks_access_connector.uc.id
+  }
+  comment = "UC credential to ADLS via Access Connector"
+}
+
+# ----- External locations (one per container) -----
+resource "databricks_external_location" "raw" {
+  provider             = databricks.ws
+  name                 = "loc-raw"
+  url                  = "abfss://raw@${var.sa_name}.dfs.core.windows.net/"
+  credential_name      = databricks_storage_credential.aml.name
+}
+
+resource "databricks_external_location" "silver" {
+  provider             = databricks.ws
+  name                 = "loc-silver"
+  url                  = "abfss://silver@${var.sa_name}.dfs.core.windows.net/"
+  credential_name      = databricks_storage_credential.aml.name
+}
+
+resource "databricks_external_location" "gold" {
+  provider             = databricks.ws
+  name                 = "loc-gold"
+  url                  = "abfss://gold@${var.sa_name}.dfs.core.windows.net/"
+  credential_name      = databricks_storage_credential.aml.name
+}
+
+# ----- Catalog & schemas mapped to the locations -----
+resource "databricks_catalog" "aml" {
+  provider = databricks.ws
+  name     = "aml"
+  comment  = "AML analytics catalog"
+}
+
+resource "databricks_schema" "raw" {
+  provider         = databricks.ws
+  catalog_name     = databricks_catalog.aml.name
+  name             = "raw"
+  comment          = "Bronze landing"
+  storage_location = databricks_external_location.raw.url
+}
+
+resource "databricks_schema" "silver" {
+  provider         = databricks.ws
+  catalog_name     = databricks_catalog.aml.name
+  name             = "silver"
+  comment          = "Conformed layer"
+  storage_location = databricks_external_location.silver.url
+}
+
+resource "databricks_schema" "gold" {
+  provider         = databricks.ws
+  catalog_name     = databricks_catalog.aml.name
+  name             = "gold"
+  comment          = "Serving layer"
+  storage_location = databricks_external_location.gold.url
+}
+
+# ----- Grants (adjust to your groups) -----
+# Expect that your Entra groups are SCIM-synced into Databricks with same names:
+# grp-aml-data-engineers, grp-aml-data-scientists, grp-aml-investigators
+data "databricks_group" "eng" { provider = databricks.ws, display_name = "grp-aml-data-engineers" }
+data "databricks_group" "sci" { provider = databricks.ws, display_name = "grp-aml-data-scientists" }
+data "databricks_group" "inv" { provider = databricks.ws, display_name = "grp-aml-investigators" }
+
+resource "databricks_grants" "catalog" {
+  provider = databricks.ws
+  catalog  = databricks_catalog.aml.name
+  grant {
+    principal  = data.databricks_group.eng.display_name
+    privileges = ["USE_CATALOG", "CREATE_SCHEMA"]
+  }
+  grant {
+    principal  = data.databricks_group.sci.display_name
+    privileges = ["USE_CATALOG"]
+  }
+  grant {
+    principal  = data.databricks_group.inv.display_name
+    privileges = ["USE_CATALOG"]
+  }
+}
+
+resource "databricks_grants" "schema_raw" {
+  provider = databricks.ws
+  schema   = "${databricks_catalog.aml.name}.${databricks_schema.raw.name}"
+  grant { principal = data.databricks_group.eng.display_name  privileges = ["USE_SCHEMA","CREATE_TABLE","MODIFY","SELECT"] }
+}
+
+resource "databricks_grants" "schema_silver" {
+  provider = databricks.ws
+  schema   = "${databricks_catalog.aml.name}.${databricks_schema.silver.name}"
+  grant { principal = data.databricks_group.eng.display_name  privileges = ["USE_SCHEMA","CREATE_TABLE","MODIFY","SELECT"] }
+  grant { principal = data.databricks_group.sci.display_name  privileges = ["USE_SCHEMA","SELECT","CREATE_TABLE"] }
+}
+
+resource "databricks_grants" "schema_gold" {
+  provider = databricks.ws
+  schema   = "${databricks_catalog.aml.name}.${databricks_schema.gold.name}"
+  grant { principal = data.databricks_group.inv.display_name  privileges = ["USE_SCHEMA","SELECT"] }
+  grant { principal = data.databricks_group.sci.display_name  privileges = ["USE_SCHEMA","SELECT"] }
+}
+Apply:
+cd uc
+terraform init
+terraform apply -auto-approve \
+  -var="databricks_account_id=<your-dbx-account-id>" \
+  -var="sa_name=<same-storage-name>"
+Result: UC metastore bound to your workspace, storage credential via Access Connector, external locations for raw/silver/gold, catalog aml with schemas mapped and permissions set.
+
+3C) First ingestion with Delta Live Tables (DLT)
+1) Create a Databricks notebook (e.g., /Repos/aml/dlt/transactions.py) with this starter:
+import dlt
+from pyspark.sql.functions import col, to_timestamp, regexp_replace
+
+# ---- Paths (UC external locations) ----
+RAW   = "abfss://raw@<STORAGE>.dfs.core.windows.net/transactions/"
+SILVER= "abfss://silver@<STORAGE>.dfs.core.windows.net/transactions/"
+GOLD  = "abfss://gold@<STORAGE>.dfs.core.windows.net/features/"
+
+@dlt.table(
+  name="aml_raw_transactions",
+  comment="Landing of transactions (auto loader).",
+  table_properties={"quality": "bronze"}
+)
+def raw_transactions():
+  return (
+    spark.readStream.format("cloudFiles")
+      .option("cloudFiles.format","json")          # or "csv"/"parquet"
+      .option("cloudFiles.inferColumnTypes","true")
+      .load(RAW)
+      .withColumn("ingest_ts", to_timestamp(col("_metadata.file_modification_time")/1000))
+  )
+
+@dlt.view(name="txn_clean")
+def txn_clean():
+  df = dlt.read_stream("aml_raw_transactions")
+  return (
+    df
+      .withColumn("amount", col("amount").cast("decimal(18,2)"))
+      .withColumn("value_date", to_timestamp("value_date"))
+      .withColumn("currency", regexp_replace(col("currency"), r"[^A-Z]", ""))
+  )
+
+@dlt.table(
+  name="aml_transactions",
+  comment="Conformed transactions (deduped).",
+  table_properties={"quality": "silver"}
+)
+def transactions_silver():
+  return (
+    dlt.read_stream("txn_clean")
+      .dropDuplicates(["tx_id"])
+  )
+
+@dlt.table(
+  name="aml_txn_features",
+  comment="Simple AML features per account per day.",
+  table_properties={"quality": "gold"}
+)
+def txn_features():
+  from pyspark.sql.functions import sum as _sum, countDistinct, date_trunc
+  df = dlt.read("aml_transactions")
+  return (
+    df.groupBy(
+      col("account_id"),
+      date_trunc("DAY", col("value_date")).alias("d")
+    ).agg(
+      _sum("amount").alias("sum_amt"),
+      countDistinct("counterparty_id").alias("cp_count")
+    )
+  )
+Drop sample JSON/CSV files into raw/transactions/ (via Storage Explorer or ADF Copy) and DLT will incrementally ingest.
+2) Provision the DLT pipeline via Terraform (workspace provider)
+resource "databricks_pipeline" "aml_core" {
+  provider = databricks.ws
+  name     = "dlt-aml-core"
+  catalog  = databricks_catalog.aml.name
+  target   = databricks_schema.silver.name   # default database for unnamed tables
+  storage  = "abfss://logs@${var.sa_name}.dfs.core.windows.net/dlt/aml-core"
+
+  configuration = {
+    "pipelines.useCatalog" = "true"
+  }
+
+  library {
+    notebook { path = "/Repos/aml/dlt/transactions.py" }
+  }
+
+  continuous = true   # or false for triggered
+  edition    = "ADVANCED"
+}
+Start the pipeline once from the Databricks UI (or with databricks pipelines start --pipeline-id <id>). New files in raw/transactions/ will flow to aml.raw.aml_raw_transactions → aml.silver.aml_transactions → aml.gold.aml_txn_features.
+
+Quick validation checklist
+	•	In Data Explorer, you should see catalog aml with schemas raw/silver/gold.
+	•	Upload a test file to raw/transactions/ and watch DLT tables populate.
+	•	SELECT * FROM aml.silver.aml_transactions LIMIT 10; returns rows.
+	•	Privileges: engineers can CREATE TABLE in raw/silver, investigators can SELECT in gold.
+
+Next (Step 4 preview)
+	•	Add sanctions enrichment (OFAC/EU/SECO) into aml.silver.watchlists, and a first baseline rules DLT notebook (top 5 typologies).
+	•	Wire Power BI to aml.gold via Synapse Serverless SQL or Databricks SQL (per your earlier choice).
+

@@ -1,0 +1,42 @@
+[
+  {
+    "alert_id": "ALERT-0001",
+    "subject_id": "PARTY-004",
+    "typology": "R1_SANCTIONS_MATCH",
+    "risk_score": 0.99,
+    "evidence": {
+      "source": "OFAC",
+      "program": "SANCTIONS",
+      "party_name": "Vladimir Petrov",
+      "watchlist_name": "Vladimir Petrov",
+      "match_type": "name"
+    },
+    "created_ts": "2025-08-19T12:53:10.341735"
+  },
+  {
+    "alert_id": "ALERT-0002",
+    "subject_id": "ACC-12345",
+    "typology": "R2_STRUCTURING",
+    "risk_score": 0.8,
+    "evidence": {
+      "transaction_count": 4,
+      "total_amount": 3560.0,
+      "date": "2024-01-15",
+      "pattern": "multiple_small_same_day"
+    },
+    "created_ts": "2025-08-19T12:53:10.341788"
+  },
+  {
+    "alert_id": "ALERT-0003",
+    "subject_id": "ACC-56789",
+    "typology": "R3_HIGH_RISK_CORRIDOR",
+    "risk_score": 0.7,
+    "evidence": {
+      "origin_country": "US",
+      "beneficiary_country": "IR",
+      "transaction_id": "TXN-006",
+      "amount": 75000.0
+    },
+    "created_ts": "2025-08-19T12:53:10.341795"
+  }
+]

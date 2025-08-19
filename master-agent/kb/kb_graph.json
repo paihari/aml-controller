@@ -1,0 +1,149 @@
+{
+  "plans": [
+    {
+      "timestamp": "2025-08-19T10:47:06.767013",
+      "tasks": [
+        {
+          "id": "T-1",
+          "agent": "databricks",
+          "tool": "dlt_create_update",
+          "args": {
+            "catalog": "aml",
+            "target_schema": "silver",
+            "notebooks": [
+              "/Repos/aml/dlt/watchlists.py",
+              "/Repos/aml/dlt/rules_baseline.py"
+            ],
+            "continuous": true,
+            "storage": "abfss://logs@<sa>.dfs.core.windows.net/dlt/aml-core"
+          }
+        },
+        {
+          "id": "T-2",
+          "agent": "synapse_sql",
+          "tool": "create_view",
+          "args": {
+            "sql": "CREATE OR ALTER VIEW vw_alerts AS SELECT * FROM OPENROWSET(...)"
+          }
+        }
+      ],
+      "status": "planned"
+    },
+    {
+      "timestamp": "2025-08-19T10:53:25.416725",
+      "tasks": [],
+      "status": "planned"
+    },
+    {
+      "timestamp": "2025-08-19T10:53:33.578129",
+      "tasks": [
+        {
+          "id": "T-3",
+          "agent": "mlflow",
+          "tool": "train",
+          "args": {
+            "model_name": "aml_alert_triage",
+            "data_table": "aml.gold.alerts_labeled",
+            "features": [
+              "risk_score",
+              "typology",
+              "evidence_features"
+            ],
+            "target": "label"
+          }
+        },
+        {
+          "id": "T-4",
+          "agent": "mlflow",
+          "tool": "batch_score",
+          "args": {
+            "model_name": "aml_alert_triage",
+            "input_table": "aml.gold.alerts",
+            "output_table": "aml.gold.alerts_scored"
+          }
+        }
+      ],
+      "status": "planned"
+    }
+  ],
+  "results": [
+    {
+      "timestamp": "2025-08-19T10:47:06.769906",
+      "task_id": "T-1",
+      "agent": "databricks",
+      "tool": "dlt_create_update",
+      "result": {
+        "task_id": "T-1",
+        "error": "[Errno 2] No such file or directory: 'mcp'",
+        "verified": false
+      },
+      "status": "failed"
+    },
+    {
+      "timestamp": "2025-08-19T10:47:06.771509",
+      "task_id": "T-2",
+      "agent": "synapse_sql",
+      "tool": "create_view",
+      "result": {
+        "task_id": "T-2",
+        "error": "[Errno 2] No such file or directory: 'mcp'",
+        "verified": false
+      },
+      "status": "failed"
+    },
+    {
+      "timestamp": "2025-08-19T10:53:33.579680",
+      "task_id": "T-3",
+      "agent": "mlflow",
+      "tool": "train",
+      "result": {
+        "task_id": "T-3",
+        "error": "[Errno 2] No such file or directory: 'mcp'",
+        "verified": false
+      },
+      "status": "failed"
+    },
+    {
+      "timestamp": "2025-08-19T10:53:33.580826",
+      "task_id": "T-4",
+      "agent": "mlflow",
+      "tool": "batch_score",
+      "result": {
+        "task_id": "T-4",
+        "error": "[Errno 2] No such file or directory: 'mcp'",
+        "verified": false
+      },
+      "status": "failed"
+    }
+  ],
+  "lineage": {
+    "databricks.dlt_create_update": [
+      {
+        "task_id": "T-1",
+        "timestamp": "2025-08-19T10:47:06.769906",
+        "status": "failed"
+      }
+    ],
+    "synapse_sql.create_view": [
+      {
+        "task_id": "T-2",
+        "timestamp": "2025-08-19T10:47:06.771509",
+        "status": "failed"
+      }
+    ],
+    "mlflow.train": [
+      {
+        "task_id": "T-3",
+        "timestamp": "2025-08-19T10:53:33.579680",
+        "status": "failed"
+      }
+    ],
+    "mlflow.batch_score": [
+      {
+        "task_id": "T-4",
+        "timestamp": "2025-08-19T10:53:33.580826",
+        "status": "failed"
+      }
+    ]
+  }
+}

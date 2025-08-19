@@ -1,0 +1,229 @@
+Step 5: Power BI dashboards + Case Integration for your Databricks-first AML MVP. It’s split into two tracks you can run in parallel:
+	•	5A. BI Serving (Synapse Serverless + Power BI)
+	•	5B. Minimal Case Management (Azure SQL + Databricks CDF job)
+
+5A) BI serving (Synapse Serverless + Power BI)
+1) Create Synapse Serverless database, credential, data source
+Point to your gold container where aml.gold.alerts (Delta) lives.
+-- Connect to your Synapse Serverless endpoint
+CREATE DATABASE aml_bi;
+GO
+USE aml_bi;
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.symmetric_keys WHERE name = '##MS_DatabaseMasterKey##')
+  CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'Temp#Password_Only_For_This_Step';
+
+CREATE DATABASE SCOPED CREDENTIAL msi_cred WITH IDENTITY = 'Managed Identity';
+
+IF NOT EXISTS (SELECT * FROM sys.external_data_sources WHERE name = 'ds_gold')
+CREATE EXTERNAL DATA SOURCE ds_gold
+WITH ( TYPE = HADOOP,
+       LOCATION = 'abfss://gold@<STORAGE>.dfs.core.windows.net',
+       CREDENTIAL = msi_cred );
+GO
+2) Analytical views for Power BI
+These views read your Delta tables via OPENROWSET … FORMAT='DELTA'.
+USE aml_bi;
+GO
+
+-- Base alerts view
+CREATE OR ALTER VIEW vw_alerts AS
+SELECT
+  TRY_CAST(JSON_VALUE(evidence, '$.sum7') AS DECIMAL(18,2))        AS sum7,
+  TRY_CAST(JSON_VALUE(evidence, '$.sum30') AS DECIMAL(18,2))       AS sum30,
+  JSON_VALUE(evidence, '$.origin_country')                         AS origin_country,
+  JSON_VALUE(evidence, '$.beneficiary_country')                    AS beneficiary_country,
+  a.alert_id,
+  a.subject_id,
+  a.typology,
+  a.risk_score,
+  a.created_ts,
+  CAST(a.created_ts AS date) AS created_d
+FROM OPENROWSET(
+  BULK 'alerts',
+  DATA_SOURCE = 'ds_gold',
+  FORMAT = 'DELTA'
+) WITH (
+  alert_id     VARCHAR(128),
+  subject_id   VARCHAR(128),
+  typology     VARCHAR(64),
+  risk_score   FLOAT,
+  evidence     VARCHAR(8000),
+  created_ts   DATETIME2
+) AS a;
+GO
+
+-- Daily counts by typology
+CREATE OR ALTER VIEW vw_typology_daily AS
+SELECT created_d, typology, COUNT(*) AS alerts
+FROM vw_alerts
+GROUP BY created_d, typology;
+GO
+
+-- 7-day investigator queue (latest)
+CREATE OR ALTER VIEW vw_investigator_queue AS
+SELECT *
+FROM vw_alerts
+WHERE created_ts >= DATEADD(day, -7, SYSUTCDATETIME());
+GO
+
+-- Corridor heatmap (origin -> beneficiary)
+CREATE OR ALTER VIEW vw_corridors AS
+SELECT
+  UPPER(origin_country)      AS origin_country,
+  UPPER(beneficiary_country) AS beneficiary_country,
+  COUNT(*)                   AS alerts
+FROM vw_alerts
+WHERE origin_country IS NOT NULL AND beneficiary_country IS NOT NULL
+GROUP BY UPPER(origin_country), UPPER(beneficiary_country);
+GO
+(Optional performance tip: If Power BI is set to Import, you can persist summaries with CETAS later. For MVP, DirectQuery is fine.)
+3) Power BI dataset & measures (DirectQuery)
+	•	Connect Power BI Desktop → Azure Synapse Analytics (SQL) → your Serverless endpoint → aml_bi.
+	•	Select tables: vw_alerts, vw_investigator_queue, vw_typology_daily, vw_corridors.
+Add baseline DAX measures:
+Alerts := COUNTROWS('vw_alerts')
+Alerts 7D := COUNTROWS('vw_investigator_queue')
+
+Avg Risk := AVERAGE('vw_alerts'[risk_score])
+
+Alerts by Typology (last 7d) :=
+CALCULATE([Alerts],
+  FILTER('vw_alerts', 'vw_alerts'[created_ts] >= NOW() - 7)
+)
+
+High-Risk Share :=
+DIVIDE(
+  CALCULATE([Alerts], 'vw_alerts'[risk_score] >= 0.8),
+  [Alerts]
+)
+Pages to build (MVP)
+	•	Investigator Queue: table of alert_id, subject_id, typology, risk_score, created_ts + slicers (date, typology). Conditional formatting on risk_score.
+	•	Typology Trends: line chart alerts by created_d, legend = typology.
+	•	Corridor Heatmap: matrix/filled-map using origin_country x beneficiary_country → alerts.
+Row-Level Security (optional MVP)
+	•	Create a small table Users(UPN, Team) and a column AssignedTeam on alerts (or use a mapping).
+	•	Define role filter: Users[UPN] = USERPRINCIPALNAME() and relate Users.Team → Alerts.AssignedTeam.
+Publish to Power BI Service; set DirectQuery refresh (default live), or schedule if Import.
+
+5B) Minimal Case Management (Azure SQL + Delta CDF → upsert)
+Goal: every new alert in aml.gold.alerts creates/updates a case in Azure SQL for investigators to work on (and for integration with ticketing later).
+1) Create Azure SQL DB + schema
+-- In Azure SQL (e.g., "amlcases")
+CREATE SCHEMA aml AUTHORIZATION dbo;
+GO
+
+CREATE TABLE aml.cases (
+  case_id       UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+  alert_id      VARCHAR(128) NOT NULL UNIQUE,
+  subject_id    VARCHAR(128) NOT NULL,
+  typology      VARCHAR(64)  NOT NULL,
+  risk_score    FLOAT        NOT NULL,
+  status        VARCHAR(20)  NOT NULL DEFAULT 'Open', -- Open|InProgress|Closed
+  assigned_to   VARCHAR(256) NULL,    -- UPN or group
+  created_ts    DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
+  updated_ts    DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE TABLE aml.case_events (
+  event_id    BIGINT IDENTITY(1,1) PRIMARY KEY,
+  case_id     UNIQUEIDENTIFIER NOT NULL,
+  event_type  VARCHAR(64) NOT NULL,   -- Created|Assignment|Note|Disposition
+  details_json NVARCHAR(MAX) NULL,
+  created_ts  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  created_by  VARCHAR(256) NULL,
+  CONSTRAINT fk_case FOREIGN KEY (case_id) REFERENCES aml.cases(case_id)
+);
+
+CREATE INDEX IX_cases_status ON aml.cases(status);
+CREATE INDEX IX_cases_assigned ON aml.cases(assigned_to);
+2) Enable Delta Change Data Feed (CDF) on aml.gold.alerts
+Run once in Databricks:
+ALTER TABLE aml.gold.alerts SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+3) Databricks job: stream CDF → upsert into Azure SQL
+Use a small notebook scheduled every 5 minutes (or continuous) to merge new alerts.
+Cluster libraries: built-in JDBC. Secrets: store SQL connection string/credentials in Key Vault and reference via Databricks secret scope (or use AAD token flow if you prefer).
+# /Repos/aml/case_sync/alerts_to_cases.py
+from pyspark.sql.functions import col, current_timestamp
+import os
+
+JDBC_URL  = dbutils.secrets.get("kv-aml", "sql-jdbc-url")     # e.g., jdbc:sqlserver://<server>.database.windows.net:1433;database=amlcases
+JDBC_USER = dbutils.secrets.get("kv-aml", "sql-user")
+JDBC_PWD  = dbutils.secrets.get("kv-aml", "sql-pass")
+
+# Read CDF (inserts & updates) since checkpoint
+df = (spark.readStream
+      .format("delta")
+      .option("readChangeData", "true")
+      .table("aml.gold.alerts")
+      .filter("_change_type IN ('insert','update_postimage')")   # CDF metadata columns
+      .selectExpr("alert_id","subject_id","typology","risk_score","created_ts")
+)
+
+# Write to staging in-memory per microbatch and MERGE into SQL
+def upsert_to_sql(batch_df, batch_id):
+    batch_df.createOrReplaceTempView("v_new_alerts")
+    # Write to a temporary table in SQL (staging) then MERGE into aml.cases
+    tmp_table = "##incoming_alerts"  # SQL global temp table (session-scoped)
+    (batch_df
+      .write
+      .format("jdbc")
+      .mode("overwrite")
+      .option("url", JDBC_URL)
+      .option("user", JDBC_USER)
+      .option("password", JDBC_PWD)
+      .option("dbtable", tmp_table)
+      .save())
+
+    merge_sql = """
+    MERGE aml.cases AS tgt
+    USING (SELECT alert_id, subject_id, typology, risk_score, created_ts FROM ##incoming_alerts) AS src
+      ON tgt.alert_id = src.alert_id
+    WHEN NOT MATCHED THEN
+      INSERT (alert_id, subject_id, typology, risk_score, status, created_ts, updated_ts)
+      VALUES (src.alert_id, src.subject_id, src.typology, src.risk_score, 'Open', src.created_ts, SYSUTCDATETIME())
+    WHEN MATCHED THEN
+      UPDATE SET
+        tgt.risk_score = src.risk_score,
+        tgt.updated_ts = SYSUTCDATETIME();
+    """
+    # Execute MERGE via JDBC (small trick: use the same connection with a dummy write to run a query)
+    from pyspark.sql import SparkSession
+    spark._jsparkSession.sessionState().conf().setConfString("spark.datasource.jdbc.pushDownAggregate.enabled", "false")
+    (spark.read
+         .format("jdbc")
+         .option("url", JDBC_URL)
+         .option("user", JDBC_USER)
+         .option("password", JDBC_PWD)
+         .option("query", merge_sql)
+         .load()
+    )
+
+(df.writeStream
+  .foreachBatch(upsert_to_sql)
+  .outputMode("update")
+  .option("checkpointLocation", "abfss://logs@<STORAGE>.dfs.core.windows.net/checkpoints/case_sync")
+  .start()
+)
+Prefer AAD auth? Replace secrets with an AAD access token and set Authentication=ActiveDirectoryAccessToken on the JDBC connection—fine to add later.
+4) Lightweight case UI (choose one)
+Option A — Power BI “workbench” (fastest)
+	•	Add a cases page: bind to amlcases.aml.cases via the Azure SQL connector.
+	•	Actions:
+	•	“Assign to me” → use a Power Automate flow button calling a stored proc to set assigned_to = USERPRINCIPALNAME().
+	•	“Add note” → Power Automate to insert into aml.case_events.
+Option B — Power Apps Canvas (simple form)
+	•	Data source: Azure SQL amlcases.
+	•	Screens:
+	•	Queue (filter status='Open', sort by risk_score desc).
+	•	Case details (fields + a gallery of case_events).
+	•	Buttons: Assign, Add Note, Close Case (writes to SQL).
+	•	Security: AAD integrated; basic CRUD to those two tables.
+(If you already own a vendor case tool, swap Step 3 to push into their API instead of Azure SQL.)
+
+What you have after Step 5
+	•	Live dashboards in Power BI (queue, trends, corridors) backed by Synapse Serverless views.
+	•	Operational case store in Azure SQL, kept in sync from Delta CDF.
+	•	A simple investigator UI (Power BI actions or Power Apps) to triage/assign/close.
+

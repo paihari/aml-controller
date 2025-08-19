@@ -1,0 +1,5 @@
+# Synapse SQL MCP Server Dependencies
+mcp>=0.1.0
+fastmcp>=0.1.0
+pyodbc>=4.0.39
+pydantic>=2.0.0

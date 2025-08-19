@@ -1,0 +1,287 @@
+Below is a tight, do-now checklist plus a minimal Terraform starter you can run to stand up the core: hub VNet, Private DNS, Key Vault (CMK), ADLS Gen2 (HNS), and Private Endpoints for Storage & Key Vault. This gives you a secure “place to land” the data platform.
+
+Step 1 — Landing zone & security (Databricks-first)
+1) Admin prep (one-time)
+	•	Create Entra ID groups (RBAC):
+	•	grp-aml-platform-ops, grp-aml-data-engineers, grp-aml-data-scientists, grp-aml-investigators.
+	•	Create subscriptions (or pick existing): platform, dev, prod.
+	•	Decide region (e.g., westeurope or switzerlandnorth) and CIDR (e.g., 10.10.0.0/16).
+2) Resource groups (platform subscription)
+	•	rg-aml-net-hub (network & private DNS)
+	•	rg-aml-sec (Key Vault, identities)
+	•	rg-aml-data (ADLS accounts)
+	•	rg-aml-monitor (Log Analytics)
+3) Network & name resolution
+	•	Hub VNet vnet-aml-hub with subnets:
+	•	snet-pe (Private Endpoints)
+	•	(Reserve snet-dbx for Databricks VNet injection later)
+	•	Private DNS zones & links:
+	•	privatelink.blob.core.windows.net
+	•	privatelink.dfs.core.windows.net
+	•	privatelink.vaultcore.azure.net
+4) Security foundations
+	•	Key Vault with soft-delete & purge protection.
+	•	Customer-Managed Key (CMK) in Key Vault.
+	•	ADLS Gen2 storage account with HNS + public network disabled.
+	•	Private Endpoints for blob/dfs and vault; map A records via Private DNS.
+	•	RBAC:
+	•	grp-aml-platform-ops: Contributor on platform RGs.
+	•	grp-aml-data-engineers: Storage Blob Data Contributor on ADLS.
+	•	grp-aml-data-scientists: Storage Blob Data Reader (tighten later with ACLs).
+	•	grp-aml-investigators: Storage Blob Data Reader (gold only later).
+	•	Policy (optional but recommended):
+	•	Deny public network access on Storage/Key Vault.
+	•	Require Private Endpoints for Storage.
+	•	Allowed locations.
+
+
+Minimal Terraform starter (drop-in)
+Files
+/infra
+  main.tf
+  variables.tf
+  outputs.tf
+
+main.tf
+terraform {
+  required_version = ">= 1.6.0"
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.116"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+# ---------- Variables ----------
+locals {
+  location         = var.location
+  rg_net_name      = "rg-aml-net-hub"
+  rg_sec_name      = "rg-aml-sec"
+  rg_data_name     = "rg-aml-data"
+  vnet_name        = "vnet-aml-hub"
+  pe_subnet_name   = "snet-pe"
+  kv_name          = "kv-aml-plat"
+  sa_name          = var.sa_name # must be globally unique & 3-24 chars
+  tags             = { env = var.env, workload = "aml-platform", owner = var.owner }
+}
+
+# ---------- Resource Groups ----------
+resource "azurerm_resource_group" "net" {
+  name     = local.rg_net_name
+  location = local.location
+  tags     = local.tags
+}
+
+resource "azurerm_resource_group" "sec" {
+  name     = local.rg_sec_name
+  location = local.location
+  tags     = local.tags
+}
+
+resource "azurerm_resource_group" "data" {
+  name     = local.rg_data_name
+  location = local.location
+  tags     = local.tags
+}
+
+# ---------- Networking: Hub VNet + Private Endpoint Subnet ----------
+resource "azurerm_virtual_network" "hub" {
+  name                = local.vnet_name
+  location            = local.location
+  resource_group_name = azurerm_resource_group.net.name
+  address_space       = [var.vnet_cidr]
+  tags                = local.tags
+}
+
+resource "azurerm_subnet" "pe" {
+  name                 = local.pe_subnet_name
+  resource_group_name  = azurerm_resource_group.net.name
+  virtual_network_name = azurerm_virtual_network.hub.name
+  address_prefixes     = [var.pe_subnet_cidr]
+  private_endpoint_network_policies_enabled = true
+}
+
+# ---------- Private DNS zones ----------
+resource "azurerm_private_dns_zone" "blob" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = azurerm_resource_group.net.name
+}
+
+resource "azurerm_private_dns_zone" "dfs" {
+  name                = "privatelink.dfs.core.windows.net"
+  resource_group_name = azurerm_resource_group.net.name
+}
+
+resource "azurerm_private_dns_zone" "vault" {
+  name                = "privatelink.vaultcore.azure.net"
+  resource_group_name = azurerm_resource_group.net.name
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob_link" {
+  name                  = "blob-link"
+  resource_group_name   = azurerm_resource_group.net.name
+  private_dns_zone_name = azurerm_private_dns_zone.blob.name
+  virtual_network_id    = azurerm_virtual_network.hub.id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "dfs_link" {
+  name                  = "dfs-link"
+  resource_group_name   = azurerm_resource_group.net.name
+  private_dns_zone_name = azurerm_private_dns_zone.dfs.name
+  virtual_network_id    = azurerm_virtual_network.hub.id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "vault_link" {
+  name                  = "vault-link"
+  resource_group_name   = azurerm_resource_group.net.name
+  private_dns_zone_name = azurerm_private_dns_zone.vault.name
+  virtual_network_id    = azurerm_virtual_network.hub.id
+  registration_enabled  = false
+}
+
+# ---------- Key Vault (for CMK) ----------
+resource "azurerm_key_vault" "kv" {
+  name                        = local.kv_name
+  location                    = local.location
+  resource_group_name         = azurerm_resource_group.sec.name
+  tenant_id                   = var.tenant_id
+  sku_name                    = "premium"
+  purge_protection_enabled    = true
+  soft_delete_retention_days  = 90
+  enable_rbac_authorization   = true
+  public_network_access_enabled = false
+  tags                        = local.tags
+}
+
+# Example CMK key (RSA)
+resource "azurerm_key_vault_key" "cmk" {
+  name         = "cmk-aml-storage"
+  key_vault_id = azurerm_key_vault.kv.id
+  key_type     = "RSA"
+  key_size     = 3072
+  key_opts     = ["decrypt","encrypt","sign","unwrapKey","verify","wrapKey"]
+}
+
+# ---------- ADLS Gen2 (HNS) with CMK ----------
+resource "azurerm_storage_account" "adls" {
+  name                     = local.sa_name
+  resource_group_name      = azurerm_resource_group.data.name
+  location                 = local.location
+  account_tier             = "Premium"
+  account_replication_type = "ZRS"
+  account_kind             = "BlockBlobStorage" # or "StorageV2" (choose per your needs)
+  is_hns_enabled           = true
+  min_tls_version          = "TLS1_2"
+  allow_nested_items_to_be_public = false
+  public_network_access_enabled   = false
+  tags                     = local.tags
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  customer_managed_key {
+    key_vault_key_id = azurerm_key_vault_key.cmk.id
+  }
+}
+
+# ---------- Private Endpoints for Storage (blob + dfs) ----------
+resource "azurerm_private_endpoint" "pe_blob" {
+  name                = "pe-${local.sa_name}-blob"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.net.name
+  subnet_id           = azurerm_subnet.pe.id
+
+  private_service_connection {
+    name                           = "blob-psc"
+    private_connection_resource_id = azurerm_storage_account.adls.id
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "blob-dnsgrp"
+    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
+  }
+}
+
+resource "azurerm_private_endpoint" "pe_dfs" {
+  name                = "pe-${local.sa_name}-dfs"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.net.name
+  subnet_id           = azurerm_subnet.pe.id
+
+  private_service_connection {
+    name                           = "dfs-psc"
+    private_connection_resource_id = azurerm_storage_account.adls.id
+    subresource_names              = ["dfs"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "dfs-dnsgrp"
+    private_dns_zone_ids = [azurerm_private_dns_zone.dfs.id]
+  }
+}
+
+# ---------- Private Endpoint for Key Vault ----------
+resource "azurerm_private_endpoint" "pe_kv" {
+  name                = "pe-${local.kv_name}"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.net.name
+  subnet_id           = azurerm_subnet.pe.id
+
+  private_service_connection {
+    name                           = "kv-psc"
+    private_connection_resource_id = azurerm_key_vault.kv.id
+    subresource_names              = ["vault"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "kv-dnsgrp"
+    private_dns_zone_ids = [azurerm_private_dns_zone.vault.id]
+  }
+}
+
+
+variables.tf
+variable "tenant_id"   { type = string }
+variable "location"    { type = string  default = "westeurope" }
+variable "env"         { type = string  default = "plat" }
+variable "owner"       { type = string  default = "aml-team" }
+
+# Choose globally unique storage name (lowercase, 3-24 chars)
+variable "sa_name"     { type = string }
+
+# Networking
+variable "vnet_cidr"    { type = string default = "10.10.0.0/16" }
+variable "pe_subnet_cidr" { type = string default = "10.10.1.0/24" }
+
+outputs.tf
+output "key_vault_name" { value = azurerm_key_vault.kv.name }
+output "storage_account_name" { value = azurerm_storage_account.adls.name }
+output "vnet_id" { value = azurerm_virtual_network.hub.id }
+
+How to run
+az login
+az account set --subscription "<platform-subscription-id>"
+
+cd infra
+terraform init
+terraform plan -var="tenant_id=$(az account show --query tenantId -o tsv)" -var="sa_name=staml<uniqueid>"
+terraform apply -auto-approve -var="tenant_id=$(az account show --query tenantId -o tsv)" -v
+
+What you’ll have after Step 1
+	•	A locked-down landing zone: ADLS Gen2 with HNS + CMK, no public network, reachable only via Private Endpoints in your hub VNet.
+	•	Key Vault on private link for keys/secrets.
+	•	Private DNS wired so PaaS resolves privately inside the hub.
+	•	Clean RBAC scaffolding for engineers, scientists, and investigators.
+
