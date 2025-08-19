@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: dynamic-aml-system
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app_production.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /opt/render/project/src/data/aml_database.db
+    scaling:
+      minInstances: 1
+      maxInstances: 1

@@ -1,0 +1,6 @@
+flask
+flask-cors
+requests
+python-dateutil
+faker
+gunicorn

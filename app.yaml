@@ -1,0 +1,20 @@
+# Google App Engine configuration
+runtime: python311
+
+env_variables:
+  FLASK_ENV: production
+  DATABASE_PATH: /tmp/aml_database.db
+
+handlers:
+- url: /api/.*
+  script: auto
+  
+- url: /dashboard
+  script: auto
+  
+- url: /.*
+  script: auto
+
+automatic_scaling:
+  min_instances: 1
+  max_instances: 2
