@@ -1,0 +1,10 @@
+theme: jekyll-theme-minimal
+title: AML Alert Dashboard
+description: Real-time Anti-Money Laundering Detection Results
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+include:
+  - README.md
