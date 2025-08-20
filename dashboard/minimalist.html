@@ -513,7 +513,7 @@
                     
                     // Update all components with the comprehensive data
                     updateStatistics(dashboardData.statistics);
-                    updateAlerts(dashboardData.alerts, dashboardData.alert_typologies);
+                    updateAlerts(dashboardData.alerts, dashboardData.alert_typologies, dashboardData.statistics.alerts_by_risk);
                     updateTransactions(dashboardData.transactions);
                 } else {
                     // Fallback to individual endpoints if dashboard endpoint fails
@@ -557,10 +557,10 @@
         }
 
         // Update Alerts Table and Chart
-        function updateAlerts(alerts, preCalculatedTypologies = null) {
+        function updateAlerts(alerts, preCalculatedTypologies = null, preCalculatedRisk = null) {
             const tbody = document.getElementById('alertsTableBody');
             let alertTypes = {};
-            const riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+            let riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0 };
 
             if (!alerts || alerts.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No active alerts</td></tr>';
@@ -577,6 +577,11 @@
                 }, {});
             }
 
+            // Use pre-calculated risk data if available
+            if (preCalculatedRisk) {
+                riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0, ...preCalculatedRisk };
+            }
+
             tbody.innerHTML = alerts.map(alert => {
                 // If no pre-calculated data, count alert types
                 if (!preCalculatedTypologies) {
@@ -584,12 +589,16 @@
                     alertTypes[cleanTypology] = (alertTypes[cleanTypology] || 0) + 1;
                 }
 
-                // Count risk levels
+                // Get risk score for styling
                 const riskScore = alert.risk_score || 0;
-                if (riskScore >= 0.9) riskLevels.Critical++;
-                else if (riskScore >= 0.7) riskLevels.High++;
-                else if (riskScore >= 0.5) riskLevels.Medium++;
-                else riskLevels.Low++;
+                
+                // Count risk levels only if no pre-calculated data
+                if (!preCalculatedRisk) {
+                    if (riskScore >= 0.9) riskLevels.Critical++;
+                    else if (riskScore >= 0.7) riskLevels.High++;
+                    else if (riskScore >= 0.5) riskLevels.Medium++;
+                    else riskLevels.Low++;
+                }
 
                 const riskClass = riskScore >= 0.9 ? 'risk-critical' : 
                                  riskScore >= 0.7 ? 'risk-high' : 'risk-medium';
