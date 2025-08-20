@@ -42,7 +42,8 @@ if __name__ == '__main__':
     PORT = 8080
     
     # Change to dashboard directory
-    os.chdir('/Users/bantwal/projects/my-cluse-code/dashboard')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
     
     with socketserver.TCPServer(("", PORT), CORSRequestHandler) as httpd:
         print(f"🚀 AML Dashboard server starting...")

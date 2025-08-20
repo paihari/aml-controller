@@ -7,7 +7,8 @@ echo ""
 pkill -f "python.*server.py" 2>/dev/null || true
 
 # Start the enhanced dashboard server
-cd /Users/bantwal/projects/aml-controller/dashboard
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "📊 Starting dashboard server on port 8081..."
 python3 public_server.py &

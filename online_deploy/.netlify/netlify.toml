@@ -7,10 +7,10 @@ redirects = []
 [functions."*"]
 
 [build]
-publish = "/Users/bantwal/projects/aml-controller/online_deploy/_site"
+publish = "_site"
 publishOrigin = "ui"
 commandOrigin = "ui"
-base = "/Users/bantwal/projects/aml-controller/online_deploy"
+base = "online_deploy"
 command = "bundle exec jekyll build"
 
 [build.environment]
