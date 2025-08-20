@@ -20,20 +20,96 @@ CORS(app)
 def home():
     """Root endpoint - redirect to dashboard"""
     return '''
-    <h1>🛡️ Dynamic AML System</h1>
-    <p>Welcome to the Anti-Money Laundering Detection System</p>
-    <ul>
-        <li><a href="/dashboard/dynamic.html">📊 AML Dashboard</a></li>
-        <li><a href="/api/health">💚 Health Check</a></li>
-        <li><a href="/api/statistics">📈 Statistics</a></li>
-        <li><a href="/api/alerts">🚨 Alerts</a></li>
-    </ul>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>syntropAI - AML Detection Platform</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background-color: #faf7f2; 
+                color: #2d2d2d; 
+                line-height: 1.6;
+                padding: 40px 20px;
+            }
+            .container { max-width: 800px; margin: 0 auto; text-align: center; }
+            .brand { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 40px; }
+            .brand img { height: 60px; }
+            .brand-text { font-size: 32px; font-weight: 600; color: #2d2d2d; }
+            .subtitle { font-size: 18px; color: #666; margin-bottom: 40px; }
+            .nav-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px; }
+            .nav-card { 
+                background: #ffffff; 
+                border: 1px solid #e8e1d6; 
+                border-radius: 8px; 
+                padding: 24px; 
+                text-decoration: none; 
+                color: #2d2d2d;
+                transition: all 0.2s ease;
+            }
+            .nav-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05); transform: translateY(-2px); }
+            .nav-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+            .nav-desc { font-size: 14px; color: #666; }
+            .status { background: #ffffff; border: 1px solid #e8e1d6; border-radius: 8px; padding: 20px; margin-top: 30px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="brand">
+                <img src="/images/brand.png" alt="syntropAI" />
+                <div class="brand-text">syntropAI</div>
+            </div>
+            <div class="subtitle">Real-time Anti-Money Laundering Detection Platform</div>
+            
+            <div class="nav-grid">
+                <a href="/dashboard/minimalist.html" class="nav-card">
+                    <div class="nav-title">📊 AML Dashboard</div>
+                    <div class="nav-desc">Minimalist real-time dashboard</div>
+                </a>
+                <a href="/dashboard/dynamic.html" class="nav-card">
+                    <div class="nav-title">🔧 Dynamic Dashboard</div>
+                    <div class="nav-desc">Feature-rich dashboard</div>
+                </a>
+                <a href="/api/health" class="nav-card">
+                    <div class="nav-title">💚 Health Check</div>
+                    <div class="nav-desc">System status and version</div>
+                </a>
+                <a href="/api/statistics" class="nav-card">
+                    <div class="nav-title">📈 Statistics</div>
+                    <div class="nav-desc">System metrics and counts</div>
+                </a>
+                <a href="/api/alerts" class="nav-card">
+                    <div class="nav-title">🚨 Alerts</div>
+                    <div class="nav-desc">Active AML alerts</div>
+                </a>
+                <a href="/api/initialize" class="nav-card">
+                    <div class="nav-title">🎲 Generate Data</div>
+                    <div class="nav-desc">Create sample data</div>
+                </a>
+            </div>
+            
+            <div class="status">
+                <strong>System Status:</strong> <span style="color: #22c55e;">Online</span> | 
+                <strong>Version:</strong> 2.0.0 | 
+                <strong>Build:</strong> Minimalist Edition
+            </div>
+        </div>
+    </body>
+    </html>
     '''
 
 @app.route('/dashboard/<path:filename>')
 def dashboard_files(filename):
     """Serve dashboard files"""
     return send_from_directory('dashboard', filename)
+
+@app.route('/images/<path:filename>')
+def image_files(filename):
+    """Serve image files"""
+    return send_from_directory('images', filename)
 
 @app.route('/api/initialize', methods=['GET'])
 def initialize_data():

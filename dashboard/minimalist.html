@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AML Alert Dashboard - syntropAI</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" href="../images/brand.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #faf7f2;
+            color: #2d2d2d;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Header with minimalist branding */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 30px 0;
+            border-bottom: 1px solid #e8e1d6;
+            margin-bottom: 40px;
+        }
+        
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .brand img {
+            height: 40px;
+            width: auto;
+        }
+        
+        .brand-text {
+            font-size: 24px;
+            font-weight: 600;
+            color: #2d2d2d;
+        }
+        
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+        
+        .status-dot.error {
+            background: #ef4444;
+        }
+        
+        /* Minimal cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            background: #ffffff;
+            border: 1px solid #e8e1d6;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            transition: box-shadow 0.2s ease;
+        }
+        
+        .stat-card:hover {
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2d2d2d;
+            margin-bottom: 8px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        /* Minimal controls */
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            background: #ffffff;
+            border: 1px solid #d1c7b8;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #2d2d2d;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        
+        .btn:hover {
+            background: #f5f2ed;
+            border-color: #c4b8a5;
+        }
+        
+        .btn.active {
+            background: #2d2d2d;
+            color: #ffffff;
+            border-color: #2d2d2d;
+        }
+        
+        /* Minimal tables */
+        .section {
+            background: #ffffff;
+            border: 1px solid #e8e1d6;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #e8e1d6;
+            background: #fbf9f6;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d2d2d;
+        }
+        
+        .section-content {
+            padding: 0;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 16px 24px;
+            text-align: left;
+            border-bottom: 1px solid #f0ebe2;
+        }
+        
+        th {
+            background: #fbf9f6;
+            font-weight: 600;
+            font-size: 14px;
+            color: #2d2d2d;
+        }
+        
+        td {
+            font-size: 14px;
+            color: #444;
+        }
+        
+        tr:hover {
+            background: #fcfaf7;
+        }
+        
+        /* Risk score styling */
+        .risk-score {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .risk-critical {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        
+        .risk-high {
+            background: #fff7ed;
+            color: #ea580c;
+            border: 1px solid #fed7aa;
+        }
+        
+        .risk-medium {
+            background: #fefce8;
+            color: #ca8a04;
+            border: 1px solid #fde047;
+        }
+        
+        /* Chart containers */
+        .chart-container {
+            padding: 24px;
+            height: 300px;
+            position: relative;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        /* Loading states */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-style: italic;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 15px;
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            th, td {
+                padding: 12px 16px;
+            }
+        }
+        
+        /* Minimal animations */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Minimalist Header -->
+        <header class="header">
+            <div class="brand">
+                <img src="../images/brand.png" alt="syntropAI" />
+                <div>
+                    <div class="brand-text">AML Alert Dashboard</div>
+                    <div style="font-size: 14px; color: #666; margin-top: 2px;">Real-time Anti-Money Laundering Detection</div>
+                </div>
+            </div>
+            <div class="system-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">System Online</span>
+            </div>
+        </header>
+
+        <!-- Statistics Cards -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalAlerts">-</div>
+                <div class="stat-label">Active Alerts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalTransactions">-</div>
+                <div class="stat-label">Transactions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalSanctions">-</div>
+                <div class="stat-label">Sanctions Entries</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="systemUptime">99.9%</div>
+                <div class="stat-label">System Uptime</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn active" onclick="refreshData()">Refresh Data</button>
+            <button class="btn" onclick="initializeData()">Generate Sample Data</button>
+            <button class="btn" onclick="exportData()">Export Results</button>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">Alert Distribution</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="alertChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">Risk Levels</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="riskChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Alerts Table -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Active Alerts</div>
+            </div>
+            <div class="section-content">
+                <div class="table-container">
+                    <table id="alertsTable">
+                        <thead>
+                            <tr>
+                                <th>Alert ID</th>
+                                <th>Type</th>
+                                <th>Risk Score</th>
+                                <th>Parties</th>
+                                <th>Amount</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertsTableBody">
+                            <tr>
+                                <td colspan="6" class="loading">Loading alerts...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions Table -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Recent Transactions</div>
+            </div>
+            <div class="section-content">
+                <div class="table-container">
+                    <table id="transactionsTable">
+                        <thead>
+                            <tr>
+                                <th>Transaction ID</th>
+                                <th>Amount</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionsTableBody">
+                            <tr>
+                                <td colspan="6" class="loading">Loading transactions...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_BASE = window.location.origin.includes('localhost') 
+            ? 'http://localhost:5000/api'
+            : `${window.location.origin}/api`;
+
+        let alertChart, riskChart;
+
+        // Initialize Dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCharts();
+            loadDashboardData();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(loadDashboardData, 30000);
+        });
+
+        // Initialize Charts with minimal style
+        function initializeCharts() {
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20,
+                            font: {
+                                size: 12
+                            },
+                            color: '#666'
+                        }
+                    }
+                }
+            };
+
+            // Alert Distribution Chart
+            const alertCtx = document.getElementById('alertChart').getContext('2d');
+            alertChart = new Chart(alertCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'],
+                        borderWidth: 0
+                    }]
+                },
+                options: commonOptions
+            });
+
+            // Risk Distribution Chart
+            const riskCtx = document.getElementById('riskChart').getContext('2d');
+            riskChart = new Chart(riskCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Critical', 'High', 'Medium', 'Low'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e'],
+                        borderRadius: 4,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#666',
+                                font: { size: 11 }
+                            },
+                            grid: {
+                                color: '#f0ebe2'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#666',
+                                font: { size: 11 }
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load Dashboard Data
+        async function loadDashboardData() {
+            try {
+                updateStatus('online');
+                
+                // Load all data in parallel
+                const [healthResponse, statsResponse, alertsResponse, transactionsResponse] = await Promise.all([
+                    fetch(`${API_BASE}/health`).catch(() => null),
+                    fetch(`${API_BASE}/statistics`).catch(() => null),
+                    fetch(`${API_BASE}/alerts?limit=20`).catch(() => null),
+                    fetch(`${API_BASE}/transactions?limit=10`).catch(() => null)
+                ]);
+
+                // Update statistics
+                if (statsResponse && statsResponse.ok) {
+                    const stats = await statsResponse.json();
+                    updateStatistics(stats.data || stats);
+                }
+
+                // Update alerts
+                if (alertsResponse && alertsResponse.ok) {
+                    const alerts = await alertsResponse.json();
+                    updateAlerts(alerts.data || alerts);
+                }
+
+                // Update transactions
+                if (transactionsResponse && transactionsResponse.ok) {
+                    const transactions = await transactionsResponse.json();
+                    updateTransactions(transactions.data || transactions);
+                }
+
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+                updateStatus('error');
+            }
+        }
+
+        // Update Statistics
+        function updateStatistics(stats) {
+            document.getElementById('totalAlerts').textContent = stats.active_alerts || stats.total_alerts || 0;
+            document.getElementById('totalTransactions').textContent = stats.total_transactions || 0;
+            document.getElementById('totalSanctions').textContent = stats.total_sanctions || 0;
+        }
+
+        // Update Alerts Table and Chart
+        function updateAlerts(alerts) {
+            const tbody = document.getElementById('alertsTableBody');
+            const alertTypes = {};
+            const riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+
+            if (!alerts || alerts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No active alerts</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = alerts.map(alert => {
+                // Count alert types for chart
+                alertTypes[alert.typology] = (alertTypes[alert.typology] || 0) + 1;
+
+                // Count risk levels
+                const riskScore = alert.risk_score || 0;
+                if (riskScore >= 0.9) riskLevels.Critical++;
+                else if (riskScore >= 0.7) riskLevels.High++;
+                else if (riskScore >= 0.5) riskLevels.Medium++;
+                else riskLevels.Low++;
+
+                const riskClass = riskScore >= 0.9 ? 'risk-critical' : 
+                                 riskScore >= 0.7 ? 'risk-high' : 'risk-medium';
+                
+                return `
+                    <tr>
+                        <td><code>${alert.alert_id}</code></td>
+                        <td>${formatTypology(alert.typology)}</td>
+                        <td><span class="risk-score ${riskClass}">${Math.round(riskScore * 100)}%</span></td>
+                        <td>${alert.parties || '-'}</td>
+                        <td>${alert.amount ? formatCurrency(alert.amount) : '-'}</td>
+                        <td>${formatDate(alert.created_at)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Update charts
+            updateCharts(alertTypes, riskLevels);
+        }
+
+        // Update Transactions Table
+        function updateTransactions(transactions) {
+            const tbody = document.getElementById('transactionsTableBody');
+
+            if (!transactions || transactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No recent transactions</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = transactions.map(tx => `
+                <tr>
+                    <td><code>${tx.transaction_id}</code></td>
+                    <td>${formatCurrency(tx.amount)}</td>
+                    <td>${tx.sender_name} (${tx.sender_country})</td>
+                    <td>${tx.receiver_name} (${tx.receiver_country})</td>
+                    <td>${formatDate(tx.transaction_date)}</td>
+                    <td><span style="color: #22c55e;">Processed</span></td>
+                </tr>
+            `).join('');
+        }
+
+        // Update Charts
+        function updateCharts(alertTypes, riskLevels) {
+            // Update alert distribution chart
+            alertChart.data.labels = Object.keys(alertTypes);
+            alertChart.data.datasets[0].data = Object.values(alertTypes);
+            alertChart.update();
+
+            // Update risk level chart
+            riskChart.data.datasets[0].data = Object.values(riskLevels);
+            riskChart.update();
+        }
+
+        // Utility Functions
+        function updateStatus(status) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            if (status === 'online') {
+                dot.className = 'status-dot';
+                text.textContent = 'System Online';
+            } else {
+                dot.className = 'status-dot error';
+                text.textContent = 'System Error';
+            }
+        }
+
+        function formatTypology(typology) {
+            return typology.replace(/_/g, ' ').toLowerCase()
+                .replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(amount);
+        }
+
+        function formatDate(dateStr) {
+            return new Date(dateStr).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Control Functions
+        async function refreshData() {
+            await loadDashboardData();
+        }
+
+        async function initializeData() {
+            try {
+                const response = await fetch(`${API_BASE}/initialize`);
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`Generated ${result.transactions_generated || 0} transactions and ${result.alerts_generated || 0} alerts`);
+                    await loadDashboardData();
+                }
+            } catch (error) {
+                alert('Failed to initialize data');
+            }
+        }
+
+        function exportData() {
+            // Simple CSV export of current alerts
+            const table = document.getElementById('alertsTable');
+            let csv = '';
+            
+            for (let row of table.rows) {
+                const rowData = Array.from(row.cells).map(cell => cell.textContent);
+                csv += rowData.join(',') + '\n';
+            }
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'aml-alerts.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
