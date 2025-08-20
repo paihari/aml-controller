@@ -555,8 +555,9 @@
             }
 
             tbody.innerHTML = alerts.map(alert => {
-                // Count alert types for chart
-                alertTypes[alert.typology] = (alertTypes[alert.typology] || 0) + 1;
+                // Count alert types for chart - clean up the typology name
+                const cleanTypology = formatTypology(alert.typology);
+                alertTypes[cleanTypology] = (alertTypes[cleanTypology] || 0) + 1;
 
                 // Count risk levels
                 const riskScore = alert.risk_score || 0;
@@ -568,14 +569,19 @@
                 const riskClass = riskScore >= 0.9 ? 'risk-critical' : 
                                  riskScore >= 0.7 ? 'risk-high' : 'risk-medium';
                 
+                // Extract party information from evidence
+                const evidence = alert.evidence || {};
+                const partyName = evidence.party_name || evidence.beneficiary_name || evidence.watchlist_name || '-';
+                const amount = evidence.amount || evidence.transaction_amount || '-';
+                
                 return `
                     <tr>
                         <td><code>${alert.alert_id}</code></td>
-                        <td>${formatTypology(alert.typology)}</td>
+                        <td>${cleanTypology}</td>
                         <td><span class="risk-score ${riskClass}">${Math.round(riskScore * 100)}%</span></td>
-                        <td>${alert.parties || '-'}</td>
-                        <td>${alert.amount ? formatCurrency(alert.amount) : '-'}</td>
-                        <td>${formatDate(alert.created_at)}</td>
+                        <td>${partyName}</td>
+                        <td>${amount !== '-' ? formatCurrency(amount) : '-'}</td>
+                        <td>${formatDate(alert.created_at || new Date().toISOString())}</td>
                     </tr>
                 `;
             }).join('');
@@ -597,10 +603,10 @@
                 <tr>
                     <td><code>${tx.transaction_id}</code></td>
                     <td>${formatCurrency(tx.amount)}</td>
-                    <td>${tx.sender_name} (${tx.sender_country})</td>
-                    <td>${tx.receiver_name} (${tx.receiver_country})</td>
+                    <td>${tx.account_id || 'N/A'} (${tx.origin_country})</td>
+                    <td>${tx.beneficiary_name} (${tx.beneficiary_country})</td>
                     <td>${formatDate(tx.transaction_date)}</td>
-                    <td><span style="color: #22c55e;">Processed</span></td>
+                    <td><span style="color: #22c55e;">${tx.status || 'Processed'}</span></td>
                 </tr>
             `).join('');
         }
@@ -632,8 +638,23 @@
         }
 
         function formatTypology(typology) {
-            return typology.replace(/_/g, ' ').toLowerCase()
+            // Handle the new R1_, R2_, etc. format
+            const cleanTypology = typology
+                .replace(/^R\d+_/, '') // Remove R1_, R2_ prefixes
+                .replace(/_/g, ' ')
+                .toLowerCase()
                 .replace(/\b\w/g, l => l.toUpperCase());
+            
+            // Map specific cases for better readability
+            const typeMap = {
+                'Sanctions Match': 'Sanctions Match',
+                'High Risk Corridor': 'High Risk Geography',
+                'Round Trip': 'Round Trip Transaction',
+                'Structuring': 'Structuring Pattern',
+                'Velocity': 'Velocity Anomaly'
+            };
+            
+            return typeMap[cleanTypology] || cleanTypology;
         }
 
         function formatCurrency(amount) {
