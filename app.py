@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import datetime
 import json
+import os
 from database import AMLDatabase
 from dynamic_aml_engine import DynamicAMLEngine
 from transaction_generator import TransactionGenerator
@@ -15,11 +16,20 @@ from sanctions_loader import SanctionsLoader
 app = Flask(__name__)
 CORS(app)
 
-# Initialize components
-db = AMLDatabase()
-aml_engine = DynamicAMLEngine(db)
-transaction_generator = TransactionGenerator(db)
-sanctions_loader = SanctionsLoader(db)
+# Initialize components with error handling
+try:
+    db = AMLDatabase()
+    aml_engine = DynamicAMLEngine(db)
+    transaction_generator = TransactionGenerator(db)
+    sanctions_loader = SanctionsLoader(db)
+    print("✅ AML components initialized successfully")
+except Exception as e:
+    print(f"❌ Failed to initialize AML components: {e}")
+    # Create minimal fallback components
+    db = None
+    aml_engine = None
+    transaction_generator = None
+    sanctions_loader = None
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -34,6 +44,12 @@ def health_check():
 def get_statistics():
     """Get system statistics"""
     try:
+        if not db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not initialized'
+            }), 503
+            
         stats = db.get_statistics()
         return jsonify({
             'success': True,
@@ -310,8 +326,13 @@ def update_alert(alert_id):
             'error': str(e)
         }), 500
 
-if __name__ == '__main__':
+def initialize_system():
+    """Initialize AML system with error handling"""
     print("🚀 Starting AML Dynamic API Server...")
+    
+    if not db or not sanctions_loader or not transaction_generator or not aml_engine:
+        print("⚠️  Core components not initialized, skipping data initialization")
+        return
     
     # Initialize sanctions data on startup
     print("📥 Loading initial sanctions data...")
@@ -320,11 +341,17 @@ if __name__ == '__main__':
         print("✅ Sanctions data loaded successfully")
     except Exception as e:
         print(f"⚠️  Warning: Could not load sanctions data: {e}")
+        # Load fallback data instead
+        try:
+            sanctions_loader._load_fallback_sanctions()
+            print("✅ Fallback sanctions data loaded")
+        except Exception as e2:
+            print(f"⚠️  Warning: Could not load fallback data: {e2}")
     
     # Generate some initial data for testing
     print("🎲 Generating initial test data...")
     try:
-        test_transactions = transaction_generator.generate_mixed_batch(10)
+        test_transactions = transaction_generator.generate_mixed_batch(5)
         transaction_generator.store_transactions(test_transactions)
         
         # Process through AML engine to generate alerts
@@ -339,6 +366,15 @@ if __name__ == '__main__':
         print(f"📊 Database Statistics: {stats}")
     except Exception as e:
         print(f"⚠️  Warning: Could not get statistics: {e}")
+
+if __name__ == '__main__':
+    # Initialize system with error handling
+    try:
+        initialize_system()
+    except Exception as e:
+        print(f"⚠️  System initialization error: {e}")
+        print("🚀 Starting server anyway...")
     
-    print("🌐 API Server starting on http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"🌐 API Server starting on http://localhost:{port}")
+    app.run(debug=False, host='0.0.0.0', port=port)
