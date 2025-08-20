@@ -321,6 +321,7 @@
         <div class="controls">
             <button class="btn active" onclick="refreshData()">Refresh Data</button>
             <button class="btn" onclick="initializeData()">Generate Sample Data</button>
+            <button class="btn" onclick="processTransactions()">Process Pending Transactions</button>
             <button class="btn" onclick="exportData()">Export Results</button>
         </div>
 
@@ -599,16 +600,27 @@
                 return;
             }
 
-            tbody.innerHTML = transactions.map(tx => `
-                <tr>
-                    <td><code>${tx.transaction_id}</code></td>
-                    <td>${formatCurrency(tx.amount)}</td>
-                    <td>${tx.account_id || 'N/A'} (${tx.origin_country})</td>
-                    <td>${tx.beneficiary_name} (${tx.beneficiary_country})</td>
-                    <td>${formatDate(tx.transaction_date)}</td>
-                    <td><span style="color: #22c55e;">${tx.status || 'Processed'}</span></td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = transactions.map(tx => {
+                const status = tx.status || 'PROCESSED';
+                const statusColor = {
+                    'COMPLETED': '#22c55e',
+                    'PROCESSED': '#22c55e', 
+                    'PENDING': '#f59e0b',
+                    'FAILED': '#ef4444',
+                    'UNDER_REVIEW': '#6b7280'
+                }[status] || '#22c55e';
+                
+                return `
+                    <tr>
+                        <td><code>${tx.transaction_id}</code></td>
+                        <td>${formatCurrency(tx.amount)}</td>
+                        <td>${tx.account_id || 'N/A'} (${tx.origin_country})</td>
+                        <td>${tx.beneficiary_name} (${tx.beneficiary_country})</td>
+                        <td>${formatDate(tx.transaction_date)}</td>
+                        <td><span style="color: ${statusColor}; font-weight: 500;">${status}</span></td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         // Update Charts
@@ -688,6 +700,32 @@
                 }
             } catch (error) {
                 alert('Failed to initialize data');
+            }
+        }
+
+        async function processTransactions() {
+            try {
+                const response = await fetch(`${API_BASE}/transactions/process`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    const message = `Processed ${result.processed_count || 0} transactions:\n` +
+                                  `✅ Completed: ${result.results?.completed || 0}\n` +
+                                  `❌ Failed: ${result.results?.failed || 0}\n` +
+                                  `📋 Under Review: ${result.results?.under_review || 0}`;
+                    alert(message);
+                    await loadDashboardData();
+                } else {
+                    const error = await response.json();
+                    alert(`Failed to process transactions: ${error.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert('Failed to process transactions');
             }
         }
 

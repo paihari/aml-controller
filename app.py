@@ -459,6 +459,83 @@ def update_alert(alert_id):
             'error': str(e)
         }), 500
 
+@app.route('/api/transactions/process', methods=['POST'])
+def process_pending_transactions():
+    """Process pending transactions and update their status"""
+    try:
+        if not db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not initialized'
+            }), 503
+        
+        # Get all pending transactions
+        conn = db.get_connection()
+        cursor = conn.execute("""
+            SELECT * FROM transactions 
+            WHERE status = 'PENDING' 
+            ORDER BY created_at DESC
+            LIMIT 50
+        """)
+        pending_transactions = [dict(row) for row in cursor.fetchall()]
+        
+        if not pending_transactions:
+            return jsonify({
+                'success': True,
+                'message': 'No pending transactions to process',
+                'processed_count': 0,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+        
+        # Process transactions - simulate different outcomes
+        import random
+        processed_count = 0
+        completed_count = 0
+        failed_count = 0
+        under_review_count = 0
+        
+        for tx in pending_transactions:
+            # Simulate processing with different outcomes
+            outcome = random.choices(
+                ['COMPLETED', 'FAILED', 'UNDER_REVIEW'], 
+                weights=[0.85, 0.10, 0.05]  # 85% complete, 10% fail, 5% review
+            )[0]
+            
+            # Update transaction status
+            conn.execute("""
+                UPDATE transactions 
+                SET status = ?, created_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (outcome, tx['id']))
+            
+            processed_count += 1
+            if outcome == 'COMPLETED':
+                completed_count += 1
+            elif outcome == 'FAILED':
+                failed_count += 1
+            else:
+                under_review_count += 1
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Processed {processed_count} pending transactions',
+            'processed_count': processed_count,
+            'results': {
+                'completed': completed_count,
+                'failed': failed_count,
+                'under_review': under_review_count
+            },
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 def initialize_system():
     """Initialize AML system with error handling"""
     print("🚀 Starting AML Dynamic API Server...")
