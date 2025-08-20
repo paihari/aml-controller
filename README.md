@@ -496,7 +496,14 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ### 🆘 **Getting Help**
 - 🐛 **Issues**: [GitHub Issues](https://github.com/paihari/aml-controller/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/paihari/aml-controller/discussions)
-- 📖 **Documentation**: [Wiki](https://github.com/paihari/aml-controller/wiki)
+- 📖 **Documentation**: [Comprehensive Wiki](https://github.com/paihari/aml-controller/wiki)
+
+### 📚 **Complete Documentation**
+- **[📚 Wiki Home](https://github.com/paihari/aml-controller/wiki)** - Complete documentation hub
+- **[🚀 Quick Start](https://github.com/paihari/aml-controller/wiki/Quick-Start-Guide)** - 5-minute setup guide
+- **[🏗️ System Architecture](https://github.com/paihari/aml-controller/wiki/System-Architecture)** - C4 model diagrams
+- **[📡 API Reference](https://github.com/paihari/aml-controller/wiki/API-Reference)** - Complete REST API docs
+- **[🔍 Detection Rules](https://github.com/paihari/aml-controller/wiki/Detection-Rules)** - All AML algorithms explained
 
 ### 🌟 **Connect With Us**
 [![GitHub Stars](https://img.shields.io/github/stars/paihari/aml-controller?style=social)](https://github.com/paihari/aml-controller/stargazers)
