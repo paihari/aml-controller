@@ -7,11 +7,29 @@ import datetime
 import uuid
 from typing import Dict, List, Tuple
 from database import AMLDatabase
+from supabase_sanctions import SupabaseSanctionsDB
 import re
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class DynamicAMLEngine:
     def __init__(self, db: AMLDatabase):
         self.db = db
+        
+        # Initialize Supabase for sanctions if enabled
+        self.use_supabase = os.getenv('USE_SUPABASE_FOR_SANCTIONS', 'false').lower() == 'true'
+        self.supabase_db = None
+        
+        if self.use_supabase:
+            try:
+                self.supabase_db = SupabaseSanctionsDB()
+                print("✅ AML Engine: Supabase sanctions database initialized")
+            except Exception as e:
+                print(f"⚠️ AML Engine: Failed to initialize Supabase, using local DB: {e}")
+                self.use_supabase = False
         
         # Risk thresholds
         self.structuring_threshold = 10000
@@ -83,8 +101,11 @@ class DynamicAMLEngine:
         if not beneficiary_name:
             return alerts
         
-        # Search sanctions database
-        sanctions_matches = self.db.get_sanctions_by_name(beneficiary_name)
+        # Search sanctions database (Supabase or local)
+        if self.use_supabase and self.supabase_db:
+            sanctions_matches = self.supabase_db.get_sanctions_by_name(beneficiary_name)
+        else:
+            sanctions_matches = self.db.get_sanctions_by_name(beneficiary_name)
         
         for match in sanctions_matches:
             # Calculate match confidence
@@ -336,7 +357,15 @@ class DynamicAMLEngine:
     
     def get_alert_statistics(self) -> Dict:
         """Get current alert statistics"""
-        return self.db.get_statistics()
+        # Include Supabase sanctions count if using Supabase
+        supabase_count = None
+        if self.use_supabase and self.supabase_db:
+            try:
+                supabase_count = self.supabase_db.get_sanctions_count()
+            except Exception as e:
+                print(f"⚠️ Error getting Supabase sanctions count: {e}")
+        
+        return self.db.get_statistics(supabase_sanctions_count=supabase_count)
 
 if __name__ == "__main__":
     # Test the dynamic AML engine

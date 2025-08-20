@@ -18,10 +18,28 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from database import AMLDatabase
+from supabase_sanctions import SupabaseSanctionsDB
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class SanctionsLoader:
     def __init__(self, db: AMLDatabase):
-        self.db = db
+        self.db = db  # Keep local DB for transactions/alerts
+        
+        # Initialize Supabase for sanctions if enabled
+        self.use_supabase = os.getenv('USE_SUPABASE_FOR_SANCTIONS', 'false').lower() == 'true'
+        self.supabase_db = None
+        
+        if self.use_supabase:
+            try:
+                self.supabase_db = SupabaseSanctionsDB()
+                print("✅ Supabase sanctions database initialized")
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Supabase, falling back to local DB: {e}")
+                self.use_supabase = False
         # OpenSanctions daily datasets base URL
         self.opensanctions_base = "https://data.opensanctions.org/datasets"
         
@@ -315,8 +333,11 @@ class SanctionsLoader:
     def has_recent_sanctions_data(self, max_age_days: int = 1) -> bool:
         """Check if database has recent sanctions data"""
         try:
-            stats = self.db.get_statistics()
-            sanctions_count = stats.get('total_sanctions', 0)
+            if self.use_supabase and self.supabase_db:
+                sanctions_count = self.supabase_db.get_sanctions_count()
+            else:
+                stats = self.db.get_statistics()
+                sanctions_count = stats.get('total_sanctions', 0)
             
             if sanctions_count == 0:
                 return False
@@ -348,7 +369,13 @@ class SanctionsLoader:
         # Store all entities in database if any were loaded
         if all_entities:
             print(f"💾 Storing {len(all_entities)} entities in database...")
-            self.db.add_sanctions_data(all_entities)
+            if self.use_supabase and self.supabase_db:
+                storage_result = self.supabase_db.add_sanctions_data(all_entities)
+                if not storage_result.get('success'):
+                    print(f"⚠️ Supabase storage failed, falling back to local DB")
+                    self.db.add_sanctions_data(all_entities)
+            else:
+                self.db.add_sanctions_data(all_entities)
             
         return {
             'success': total_loaded > 0,

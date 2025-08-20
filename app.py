@@ -174,13 +174,13 @@ def health_check():
 def get_statistics():
     """Get system statistics"""
     try:
-        if not db:
+        if not aml_engine:
             return jsonify({
                 'success': False,
-                'error': 'Database not initialized'
+                'error': 'AML engine not initialized'
             }), 503
             
-        stats = db.get_statistics()
+        stats = aml_engine.get_alert_statistics()
         return jsonify({
             'success': True,
             'data': stats,
@@ -409,7 +409,11 @@ def search_sanctions():
                 'error': 'Name parameter is required'
             }), 400
         
-        sanctions = db.get_sanctions_by_name(name)
+        # Use Supabase if available, otherwise local DB
+        if hasattr(aml_engine, 'supabase_db') and aml_engine.supabase_db:
+            sanctions = aml_engine.supabase_db.get_sanctions_by_name(name)
+        else:
+            sanctions = db.get_sanctions_by_name(name)
         
         return jsonify({
             'success': True,
@@ -429,8 +433,8 @@ def search_sanctions():
 def get_dashboard_data():
     """Get all data needed for dashboard"""
     try:
-        # Get statistics
-        stats = db.get_statistics()
+        # Get statistics (includes Supabase sanctions count if enabled)
+        stats = aml_engine.get_alert_statistics()
         
         # Get recent alerts
         alerts = db.get_active_alerts(limit=20)

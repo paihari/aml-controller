@@ -311,15 +311,18 @@ class AMLDatabase:
         finally:
             conn.close()
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self, supabase_sanctions_count: int = None) -> Dict:
         """Get database statistics"""
         conn = self.get_connection()
         
         stats = {}
         
-        # Count total records
-        cursor = conn.execute("SELECT COUNT(*) as count FROM sanctions")
-        stats['total_sanctions'] = cursor.fetchone()['count']
+        # Count total records (use Supabase count if provided)
+        if supabase_sanctions_count is not None:
+            stats['total_sanctions'] = supabase_sanctions_count
+        else:
+            cursor = conn.execute("SELECT COUNT(*) as count FROM sanctions")
+            stats['total_sanctions'] = cursor.fetchone()['count']
         
         cursor = conn.execute("SELECT COUNT(*) as count FROM transactions")
         stats['total_transactions'] = cursor.fetchone()['count']
