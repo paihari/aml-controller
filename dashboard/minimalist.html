@@ -406,7 +406,7 @@
     <script>
         // API Configuration
         const API_BASE = window.location.origin.includes('localhost') 
-            ? 'http://localhost:5000/api'
+            ? 'http://localhost:5001/api'
             : `${window.location.origin}/api`;
 
         let alertChart, riskChart;
@@ -505,30 +505,42 @@
             try {
                 updateStatus('online');
                 
-                // Load all data in parallel
-                const [healthResponse, statsResponse, alertsResponse, transactionsResponse] = await Promise.all([
-                    fetch(`${API_BASE}/health`).catch(() => null),
-                    fetch(`${API_BASE}/statistics`).catch(() => null),
-                    fetch(`${API_BASE}/alerts?limit=20`).catch(() => null),
-                    fetch(`${API_BASE}/transactions?limit=10`).catch(() => null)
-                ]);
+                // Use the comprehensive dashboard data endpoint
+                const dashboardResponse = await fetch(`${API_BASE}/dashboard/data`);
+                
+                if (dashboardResponse && dashboardResponse.ok) {
+                    const dashboardData = await dashboardResponse.json();
+                    
+                    // Update all components with the comprehensive data
+                    updateStatistics(dashboardData.statistics);
+                    updateAlerts(dashboardData.alerts, dashboardData.alert_typologies);
+                    updateTransactions(dashboardData.transactions);
+                } else {
+                    // Fallback to individual endpoints if dashboard endpoint fails
+                    const [healthResponse, statsResponse, alertsResponse, transactionsResponse] = await Promise.all([
+                        fetch(`${API_BASE}/health`).catch(() => null),
+                        fetch(`${API_BASE}/statistics`).catch(() => null),
+                        fetch(`${API_BASE}/alerts?limit=20`).catch(() => null),
+                        fetch(`${API_BASE}/transactions?limit=10`).catch(() => null)
+                    ]);
 
-                // Update statistics
-                if (statsResponse && statsResponse.ok) {
-                    const stats = await statsResponse.json();
-                    updateStatistics(stats.data || stats);
-                }
+                    // Update statistics
+                    if (statsResponse && statsResponse.ok) {
+                        const stats = await statsResponse.json();
+                        updateStatistics(stats.data || stats);
+                    }
 
-                // Update alerts
-                if (alertsResponse && alertsResponse.ok) {
-                    const alerts = await alertsResponse.json();
-                    updateAlerts(alerts.data || alerts);
-                }
+                    // Update alerts
+                    if (alertsResponse && alertsResponse.ok) {
+                        const alerts = await alertsResponse.json();
+                        updateAlerts(alerts.data || alerts);
+                    }
 
-                // Update transactions
-                if (transactionsResponse && transactionsResponse.ok) {
-                    const transactions = await transactionsResponse.json();
-                    updateTransactions(transactions.data || transactions);
+                    // Update transactions
+                    if (transactionsResponse && transactionsResponse.ok) {
+                        const transactions = await transactionsResponse.json();
+                        updateTransactions(transactions.data || transactions);
+                    }
                 }
 
             } catch (error) {
@@ -545,20 +557,32 @@
         }
 
         // Update Alerts Table and Chart
-        function updateAlerts(alerts) {
+        function updateAlerts(alerts, preCalculatedTypologies = null) {
             const tbody = document.getElementById('alertsTableBody');
-            const alertTypes = {};
+            let alertTypes = {};
             const riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0 };
 
             if (!alerts || alerts.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No active alerts</td></tr>';
+                // Still update charts with empty data
+                updateCharts({}, riskLevels);
                 return;
             }
 
+            // Use pre-calculated typologies if available, otherwise calculate
+            if (preCalculatedTypologies) {
+                alertTypes = Object.keys(preCalculatedTypologies).reduce((acc, key) => {
+                    acc[formatTypology(key)] = preCalculatedTypologies[key];
+                    return acc;
+                }, {});
+            }
+
             tbody.innerHTML = alerts.map(alert => {
-                // Count alert types for chart - clean up the typology name
-                const cleanTypology = formatTypology(alert.typology);
-                alertTypes[cleanTypology] = (alertTypes[cleanTypology] || 0) + 1;
+                // If no pre-calculated data, count alert types
+                if (!preCalculatedTypologies) {
+                    const cleanTypology = formatTypology(alert.typology);
+                    alertTypes[cleanTypology] = (alertTypes[cleanTypology] || 0) + 1;
+                }
 
                 // Count risk levels
                 const riskScore = alert.risk_score || 0;
@@ -578,7 +602,7 @@
                 return `
                     <tr>
                         <td><code>${alert.alert_id}</code></td>
-                        <td>${cleanTypology}</td>
+                        <td>${formatTypology(alert.typology)}</td>
                         <td><span class="risk-score ${riskClass}">${Math.round(riskScore * 100)}%</span></td>
                         <td>${partyName}</td>
                         <td>${amount !== '-' ? formatCurrency(amount) : '-'}</td>
@@ -587,7 +611,8 @@
                 `;
             }).join('');
 
-            // Update charts
+            // Update charts with data
+            console.log('Updating charts with:', { alertTypes, riskLevels }); // Debug log
             updateCharts(alertTypes, riskLevels);
         }
 
