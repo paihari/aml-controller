@@ -320,7 +320,7 @@ class DynamicAMLEngine:
         """Normalize name for comparison"""
         if not name:
             return ""
-        return re.sub(r'[^A-Z0-9\s]', '', name.upper().strip())
+        return re.sub(r'[^A-Z0-9]', '', name.upper().strip())
     
     def _calculate_day_difference(self, date1, date2) -> int:
         """Calculate difference in days between two dates"""
