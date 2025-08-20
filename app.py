@@ -459,6 +459,48 @@ def update_alert(alert_id):
             'error': str(e)
         }), 500
 
+@app.route('/api/transactions/delete', methods=['POST'])
+def delete_transactions():
+    """Delete transactions by transaction_ids"""
+    try:
+        if not db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not initialized'
+            }), 503
+        
+        data = request.get_json()
+        if not data or 'transaction_ids' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'transaction_ids required'
+            }), 400
+        
+        transaction_ids = data['transaction_ids']
+        if not isinstance(transaction_ids, list):
+            return jsonify({
+                'success': False,
+                'error': 'transaction_ids must be a list'
+            }), 400
+        
+        # Delete transactions
+        result = db.delete_transactions_batch(transaction_ids)
+        
+        return jsonify({
+            'success': True,
+            'deleted_count': result['deleted_count'],
+            'requested_count': result['requested_count'],
+            'not_found': result['not_found'],
+            'message': f"Deleted {result['deleted_count']} of {result['requested_count']} transactions",
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/transactions/process', methods=['POST'])
 def process_pending_transactions():
     """Process pending transactions and update their status"""

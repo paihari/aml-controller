@@ -265,6 +265,52 @@ class AMLDatabase:
         conn.close()
         return transactions
     
+    def delete_transaction(self, transaction_id: str) -> bool:
+        """Delete a transaction by transaction_id"""
+        conn = self.get_connection()
+        try:
+            cursor = conn.execute(
+                "DELETE FROM transactions WHERE transaction_id = ?", 
+                (transaction_id,)
+            )
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            return deleted
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+    
+    def delete_transactions_batch(self, transaction_ids: List[str]) -> Dict:
+        """Delete multiple transactions by transaction_ids"""
+        conn = self.get_connection()
+        deleted_count = 0
+        not_found = []
+        
+        try:
+            for transaction_id in transaction_ids:
+                cursor = conn.execute(
+                    "DELETE FROM transactions WHERE transaction_id = ?", 
+                    (transaction_id,)
+                )
+                if cursor.rowcount > 0:
+                    deleted_count += 1
+                else:
+                    not_found.append(transaction_id)
+            
+            conn.commit()
+            return {
+                'deleted_count': deleted_count,
+                'requested_count': len(transaction_ids),
+                'not_found': not_found
+            }
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+    
     def get_statistics(self) -> Dict:
         """Get database statistics"""
         conn = self.get_connection()
