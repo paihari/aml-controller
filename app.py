@@ -37,7 +37,13 @@ def home():
             }
             .container { max-width: 800px; margin: 0 auto; text-align: center; }
             .brand { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 40px; }
-            .brand img { height: 60px; }
+            .brand img { 
+                height: 60px; 
+                border: 2px solid #e8e1d6; 
+                border-radius: 8px; 
+                padding: 8px; 
+                background: #ffffff;
+            }
             .brand-text { font-size: 32px; font-weight: 600; color: #2d2d2d; }
             .subtitle { font-size: 18px; color: #666; margin-bottom: 40px; }
             .nav-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px; }
@@ -60,7 +66,6 @@ def home():
         <div class="container">
             <div class="brand">
                 <img src="/images/brand.png" alt="syntropAI" />
-                <div class="brand-text">syntropAI</div>
             </div>
             <div class="subtitle">Real-time Anti-Money Laundering Detection Platform</div>
             
