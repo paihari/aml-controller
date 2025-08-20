@@ -38,10 +38,10 @@ def home():
             .container { max-width: 800px; margin: 0 auto; text-align: center; }
             .brand { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 40px; }
             .brand img { 
-                height: 60px; 
+                height: 120px; 
                 border: 2px solid #e8e1d6; 
-                border-radius: 8px; 
-                padding: 8px; 
+                border-radius: 12px; 
+                padding: 16px; 
                 background: #ffffff;
             }
             .brand-text { font-size: 32px; font-weight: 600; color: #2d2d2d; }
