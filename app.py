@@ -3,7 +3,7 @@
 Flask Web API for Dynamic AML System
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import datetime
 import json
@@ -15,6 +15,25 @@ from sanctions_loader import SanctionsLoader
 
 app = Flask(__name__)
 CORS(app)
+
+@app.route('/')
+def home():
+    """Root endpoint - redirect to dashboard"""
+    return '''
+    <h1>🛡️ Dynamic AML System</h1>
+    <p>Welcome to the Anti-Money Laundering Detection System</p>
+    <ul>
+        <li><a href="/dashboard/dynamic.html">📊 AML Dashboard</a></li>
+        <li><a href="/api/health">💚 Health Check</a></li>
+        <li><a href="/api/statistics">📈 Statistics</a></li>
+        <li><a href="/api/alerts">🚨 Alerts</a></li>
+    </ul>
+    '''
+
+@app.route('/dashboard/<path:filename>')
+def dashboard_files(filename):
+    """Serve dashboard files"""
+    return send_from_directory('dashboard', filename)
 
 # Initialize components with error handling
 try:
