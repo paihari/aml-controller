@@ -35,6 +35,36 @@ def dashboard_files(filename):
     """Serve dashboard files"""
     return send_from_directory('dashboard', filename)
 
+@app.route('/api/initialize', methods=['GET'])
+def initialize_data():
+    """Initialize system with sample data"""
+    try:
+        if not db or not transaction_generator or not aml_engine:
+            return jsonify({
+                'success': False,
+                'error': 'System components not initialized'
+            }), 503
+            
+        # Generate and process transactions
+        transactions = transaction_generator.generate_mixed_batch(15)
+        stored = transaction_generator.store_transactions(transactions)
+        results = aml_engine.process_batch(transactions)
+        
+        return jsonify({
+            'success': True,
+            'message': 'System initialized with sample data',
+            'transactions_generated': len(transactions),
+            'transactions_stored': stored,
+            'alerts_generated': results['alert_count'],
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # Initialize components with error handling
 try:
     db = AMLDatabase()
@@ -207,12 +237,15 @@ def generate_transactions():
             'error': str(e)
         }), 500
 
-@app.route('/api/generate/process', methods=['POST'])
+@app.route('/api/generate/process', methods=['GET', 'POST'])
 def generate_and_process():
     """Generate transactions and process them through AML engine"""
     try:
-        params = request.get_json() or {}
-        count = params.get('count', 20)
+        if request.method == 'GET':
+            count = request.args.get('count', 20, type=int)
+        else:
+            params = request.get_json() or {}
+            count = params.get('count', 20)
         
         # Generate transactions
         transactions = transaction_generator.generate_mixed_batch(count)
