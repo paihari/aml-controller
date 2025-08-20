@@ -369,6 +369,34 @@ def refresh_sanctions():
             'error': str(e)
         }), 500
 
+@app.route('/api/sanctions/refresh', methods=['POST'])
+def refresh_sanctions_manually():
+    """Manually refresh sanctions data from OpenSanctions daily datasets"""
+    try:
+        if not sanctions_loader:
+            return jsonify({
+                'success': False,
+                'error': 'Sanctions loader not initialized'
+            }), 503
+        
+        # Force refresh to get latest data
+        results = sanctions_loader.force_refresh_sanctions_data()
+        
+        return jsonify({
+            'success': results.get('success', False),
+            'count': results.get('total_count', results.get('count', 0)),
+            'source': results.get('source', 'Unknown'),
+            'datasets': results.get('datasets', {}),
+            'message': f"Loaded {results.get('total_count', results.get('count', 0))} sanctions records",
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/sanctions/search', methods=['GET'])
 def search_sanctions():
     """Search sanctions by name"""

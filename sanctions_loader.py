@@ -1,127 +1,230 @@
 #!/usr/bin/env python3
 """
-Load sanctions data from OpenSanctions API and other sources
+Load sanctions data from OpenSanctions daily datasets and other sources
+
+Fallback hierarchy:
+1. Prefetched data stored in database (primary)
+2. Daily OpenSanctions datasets with date fallback (secondary)  
+3. Dummy data (last resort)
+
+Focused datasets:
+- Debarred Companies and Individuals (updated daily)
+- Politically Exposed Persons (PEPs) Core Data (updated daily)
 """
 
 import requests
 import json
 import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from database import AMLDatabase
-import xml.etree.ElementTree as ET
 
 class SanctionsLoader:
     def __init__(self, db: AMLDatabase):
         self.db = db
-        self.opensanctions_api = "https://api.opensanctions.org"
-        self.ofac_sdn_url = "https://www.treasury.gov/ofac/downloads/sdn.xml"
+        # OpenSanctions daily datasets base URL
+        self.opensanctions_base = "https://data.opensanctions.org/datasets"
+        
+        # Dataset configurations
+        self.datasets = {
+            'debarment': {
+                'name': 'Debarred Companies and Individuals',
+                'path': 'debarment/senzing.json',
+                'update_frequency': 'daily'
+            },
+            'peps': {
+                'name': 'Politically Exposed Persons Core Data', 
+                'path': 'peps/senzing.json',
+                'update_frequency': 'daily'
+            }
+        }
+        
+        # Maximum days to look back for datasets
+        self.max_days_lookback = 7
     
-    def load_opensanctions_data(self, limit: int = 1000) -> Dict:
-        """Load data from OpenSanctions API"""
-        try:
-            print("🔄 Loading sanctions data from OpenSanctions...")
-            
-            # Search for sanctioned entities
-            response = requests.get(f"{self.opensanctions_api}/search", params={
-                "limit": limit,
-                "topics": "sanction,crime,poi",  # Sanctions, crime, persons of interest
-                "format": "json"
-            }, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                entities = data.get('results', [])
-                
-                print(f"📥 Retrieved {len(entities)} entities from OpenSanctions")
-                
-                # Process and store in database
-                processed_entities = []
-                for entity in entities:
-                    processed_entity = {
-                        'id': entity.get('id'),
-                        'caption': entity.get('caption'),
-                        'schema': entity.get('schema'),
-                        'countries': entity.get('countries', []),
-                        'topics': entity.get('topics', []),
-                        'datasets': entity.get('datasets', []),
-                        'first_seen': entity.get('first_seen'),
-                        'last_seen': entity.get('last_seen'),
-                        'properties': entity.get('properties', {})
-                    }
-                    processed_entities.append(processed_entity)
-                
-                # Store in database
-                self.db.add_sanctions_data(processed_entities)
-                
-                return {
-                    'success': True,
-                    'count': len(processed_entities),
-                    'source': 'OpenSanctions'
-                }
-            else:
-                print(f"❌ OpenSanctions API error: {response.status_code}")
-                return self._load_fallback_sanctions()
-                
-        except Exception as e:
-            print(f"❌ Error loading OpenSanctions data: {e}")
-            return self._load_fallback_sanctions()
+    def get_dataset_url(self, dataset_key: str, target_date: datetime = None) -> str:
+        """Generate dataset URL for a specific date"""
+        if target_date is None:
+            target_date = datetime.now()
+        
+        date_str = target_date.strftime('%Y%m%d')
+        dataset_path = self.datasets[dataset_key]['path']
+        
+        return f"{self.opensanctions_base}/{date_str}/{dataset_path}"
     
-    def load_ofac_sdn_data(self) -> Dict:
-        """Load OFAC SDN data from XML (fallback method)"""
-        try:
-            print("🔄 Loading OFAC SDN data...")
+    def load_daily_dataset(self, dataset_key: str, target_date: datetime = None) -> Dict:
+        """Load a specific dataset with date fallback"""
+        if target_date is None:
+            target_date = datetime.now()
             
-            response = requests.get(self.ofac_sdn_url, timeout=60)
-            if response.status_code == 200:
-                root = ET.fromstring(response.content)
+        dataset_name = self.datasets[dataset_key]['name']
+        print(f"🔄 Loading {dataset_name} dataset...")
+        
+        # Try multiple dates going backwards
+        for days_back in range(self.max_days_lookback):
+            attempt_date = target_date - timedelta(days=days_back)
+            dataset_url = self.get_dataset_url(dataset_key, attempt_date)
+            
+            try:
+                print(f"📅 Attempting {dataset_name} for {attempt_date.strftime('%Y-%m-%d')}")
+                response = requests.get(dataset_url, timeout=30)
                 
-                entities = []
-                for sdn_entry in root.findall(".//sdnEntry"):
-                    uid = sdn_entry.get('uid', '')
+                if response.status_code == 200:
+                    # Parse NDJSON format (newline-delimited JSON)
+                    entities = []
+                    for line in response.text.strip().split('\n'):
+                        if line.strip():
+                            try:
+                                entity = json.loads(line)
+                                entities.append(entity)
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️ Failed to parse line: {e}")
+                                continue
                     
-                    # Get name
-                    first_name = sdn_entry.findtext('.//firstName', '')
-                    last_name = sdn_entry.findtext('.//lastName', '')
-                    full_name = f"{first_name} {last_name}".strip()
+                    print(f"📥 Retrieved {len(entities)} entities from {dataset_name} ({attempt_date.strftime('%Y-%m-%d')})")
                     
-                    if not full_name:
-                        full_name = sdn_entry.findtext('.//sdnName', '')
+                    # Process entities for database storage
+                    processed_entities = []
+                    for entity in entities:
+                        processed_entity = self._process_senzing_entity(entity, dataset_key, attempt_date)
+                        if processed_entity:  # Only add valid entities
+                            processed_entities.append(processed_entity)
                     
-                    # Get program info
-                    programs = [prog.text for prog in sdn_entry.findall('.//program')]
-                    sdn_type = sdn_entry.findtext('.//sdnType', '')
-                    
-                    entity = {
-                        'id': f"ofac-{uid}",
-                        'caption': full_name,
-                        'schema': 'Person' if 'individual' in sdn_type.lower() else 'Organization',
-                        'countries': [],
-                        'topics': ['sanction'],
-                        'datasets': ['us_ofac_sdn'],
-                        'first_seen': None,
-                        'last_seen': None,
-                        'properties': {
-                            'programs': programs,
-                            'sdn_type': sdn_type,
-                            'source': 'OFAC_SDN'
-                        }
+                    return {
+                        'success': True,
+                        'count': len(processed_entities),
+                        'source': f'{dataset_name}',
+                        'date': attempt_date.strftime('%Y-%m-%d'),
+                        'entities': processed_entities
                     }
-                    entities.append(entity)
+                else:
+                    print(f"❌ Dataset not available for {attempt_date.strftime('%Y-%m-%d')} (HTTP {response.status_code})")
+                    
+            except Exception as e:
+                print(f"❌ Error loading {dataset_name} for {attempt_date.strftime('%Y-%m-%d')}: {e}")
                 
-                # Store in database
-                self.db.add_sanctions_data(entities)
-                
-                return {
-                    'success': True,
-                    'count': len(entities),
-                    'source': 'OFAC_SDN'
+        print(f"❌ Failed to load {dataset_name} for last {self.max_days_lookback} days")
+        return {'success': False, 'error': f'No {dataset_name} data available'}
+    
+    def _process_senzing_entity(self, entity: Dict, dataset_key: str, load_date: datetime) -> Dict:
+        """Process raw entity data from OpenSanctions Senzing format"""
+        try:
+            # Get primary name from NAMES array
+            names = entity.get('NAMES', [])
+            primary_name = ''
+            for name_obj in names:
+                if name_obj.get('NAME_TYPE') == 'PRIMARY':
+                    primary_name = name_obj.get('NAME_FULL', '')
+                    break
+            
+            if not primary_name and names:
+                # Fallback to first available name
+                primary_name = names[0].get('NAME_FULL', '')
+            
+            if not primary_name:
+                return None  # Skip entities without names
+            
+            # Get countries/nationalities
+            countries = []
+            country_data = entity.get('COUNTRIES', [])
+            for country_obj in country_data:
+                if country_obj.get('NATIONALITY'):
+                    countries.append(country_obj['NATIONALITY'])
+            
+            # Get addresses for additional country info
+            addresses = entity.get('ADDRESSES', [])
+            for addr_obj in addresses:
+                addr_full = addr_obj.get('ADDR_FULL', '')
+                if addr_full:
+                    # Extract country code from address (simplified)
+                    addr_parts = addr_full.split(', ')
+                    if len(addr_parts) > 1:
+                        potential_country = addr_parts[-1].strip().lower()
+                        if len(potential_country) <= 3:  # Likely country code
+                            countries.append(potential_country)
+            
+            # Determine entity type based on record type
+            schema = 'Person' if entity.get('RECORD_TYPE') == 'PERSON' else 'Organization'
+            
+            # Get risk topics
+            risks = entity.get('RISKS', [])
+            topics = []
+            for risk in risks:
+                topic = risk.get('TOPIC', '')
+                if topic:
+                    topics.append(topic)
+            
+            # Add dataset-specific topic
+            if dataset_key not in topics:
+                topics.append(dataset_key)
+            
+            return {
+                'id': f"{dataset_key}_{entity.get('RECORD_ID', '')}",
+                'caption': primary_name,
+                'schema': schema,
+                'countries': list(set(countries)),  # Remove duplicates
+                'topics': topics,
+                'datasets': [dataset_key],
+                'first_seen': load_date.strftime('%Y-%m-%d'),
+                'last_seen': load_date.strftime('%Y-%m-%d'),
+                'properties': {
+                    'dataset': dataset_key,
+                    'load_date': load_date.strftime('%Y-%m-%d'),
+                    'source': 'OpenSanctions_Daily_Senzing',
+                    'record_id': entity.get('RECORD_ID'),
+                    'record_type': entity.get('RECORD_TYPE'),
+                    'last_change': entity.get('LAST_CHANGE'),
+                    'url': entity.get('URL'),
+                    'names': names,
+                    'risks': risks
                 }
-            else:
-                return {'success': False, 'error': f"HTTP {response.status_code}"}
-                
+            }
         except Exception as e:
-            print(f"❌ Error loading OFAC data: {e}")
-            return {'success': False, 'error': str(e)}
+            print(f"⚠️ Error processing entity: {e}")
+            return None
+    
+    def _process_entity(self, entity: Dict, dataset_key: str, load_date: datetime) -> Dict:
+        """Process raw entity data from OpenSanctions dataset"""
+        # Extract entity properties
+        properties = entity.get('properties', {})
+        
+        # Get name from various possible fields
+        name = (
+            properties.get('name', [''])[0] if properties.get('name') else
+            properties.get('alias', [''])[0] if properties.get('alias') else  
+            entity.get('id', '').replace('_', ' ')
+        )
+        
+        # Get countries
+        countries = []
+        if properties.get('country'):
+            countries.extend(properties['country'])
+        if properties.get('nationality'):
+            countries.extend(properties['nationality'])
+        
+        # Determine schema/type
+        schema = entity.get('schema', 'Person')
+        
+        return {
+            'id': f"{dataset_key}_{entity.get('id', '')}",
+            'caption': name,
+            'schema': schema,
+            'countries': list(set(countries)),  # Remove duplicates
+            'topics': [dataset_key, 'sanction'] if dataset_key == 'debarment' else [dataset_key, 'pep'],
+            'datasets': [dataset_key],
+            'first_seen': load_date.strftime('%Y-%m-%d'),
+            'last_seen': load_date.strftime('%Y-%m-%d'),
+            'properties': {
+                'dataset': dataset_key,
+                'load_date': load_date.strftime('%Y-%m-%d'),
+                'source': 'OpenSanctions_Daily',
+                'raw_properties': properties
+            }
+        }
+    
+    def force_refresh_sanctions_data(self) -> Dict:
+        """Force refresh of sanctions data (bypasses prefetched data check)"""
+        return self.refresh_sanctions_data(force_refresh=True)
     
     def _load_fallback_sanctions(self) -> Dict:
         """Load hardcoded sanctions data as fallback"""
@@ -209,20 +312,77 @@ class SanctionsLoader:
             'source': 'FALLBACK'
         }
     
-    def refresh_sanctions_data(self) -> Dict:
-        """Refresh sanctions data from all sources"""
+    def has_recent_sanctions_data(self, max_age_days: int = 1) -> bool:
+        """Check if database has recent sanctions data"""
+        try:
+            stats = self.db.get_statistics()
+            sanctions_count = stats.get('total_sanctions', 0)
+            
+            if sanctions_count == 0:
+                return False
+                
+            # For now, we'll assume data exists if count > 5 (more than just dummy data)
+            # TODO: Add last_updated field to database schema
+            return sanctions_count > 5
+        except:
+            return False
+    
+    def load_all_datasets(self) -> Dict:
+        """Load all configured datasets"""
         results = {}
+        all_entities = []
+        total_loaded = 0
         
-        # Try OpenSanctions first
-        opensanctions_result = self.load_opensanctions_data(limit=500)
-        results['opensanctions'] = opensanctions_result
+        print("🔄 Loading OpenSanctions daily datasets...")
         
-        # If OpenSanctions fails, try OFAC
-        if not opensanctions_result.get('success'):
-            ofac_result = self.load_ofac_sdn_data()
-            results['ofac'] = ofac_result
+        # Load each dataset
+        for dataset_key in self.datasets.keys():
+            dataset_result = self.load_daily_dataset(dataset_key)
+            results[dataset_key] = dataset_result
+            
+            if dataset_result.get('success'):
+                entities = dataset_result.get('entities', [])
+                all_entities.extend(entities)
+                total_loaded += dataset_result.get('count', 0)
         
-        return results
+        # Store all entities in database if any were loaded
+        if all_entities:
+            print(f"💾 Storing {len(all_entities)} entities in database...")
+            self.db.add_sanctions_data(all_entities)
+            
+        return {
+            'success': total_loaded > 0,
+            'total_count': total_loaded,
+            'datasets': results,
+            'source': 'OpenSanctions_Daily'
+        }
+    
+    def refresh_sanctions_data(self, force_refresh: bool = False) -> Dict:
+        """Refresh sanctions data using proper fallback hierarchy"""
+        print("📥 Starting sanctions data refresh...")
+        
+        # 1. Check if we have recent prefetched data (primary)
+        if not force_refresh and self.has_recent_sanctions_data():
+            print("✅ Using existing prefetched sanctions data")
+            stats = self.db.get_statistics()
+            return {
+                'success': True,
+                'count': stats.get('total_sanctions', 0),
+                'source': 'Database_Prefetched',
+                'message': 'Using existing data'
+            }
+        
+        # 2. Try to load fresh daily datasets (secondary)  
+        daily_result = self.load_all_datasets()
+        if daily_result.get('success'):
+            print("✅ Successfully loaded fresh OpenSanctions datasets")
+            return daily_result
+        
+        # 3. Fall back to dummy data (last resort)
+        print("🔄 Falling back to dummy sanctions data...")
+        fallback_result = self._load_fallback_sanctions()
+        
+        return fallback_result
 
 if __name__ == "__main__":
     # Test sanctions loading
