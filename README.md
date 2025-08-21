@@ -17,7 +17,7 @@ A **dynamic Anti-Money Laundering (AML) detection platform** that processes fina
 - 🌐 **Live Sanctions Data** - Integration with OpenSanctions API and OFAC lists
 - 🎲 **Dynamic Transaction Generation** - Realistic transaction patterns for testing
 - 📊 **Interactive Dashboard** - Real-time visualizations and alert management
-- ☁️ **Cloud-First Database** - Supabase PostgreSQL with local SQLite fallback
+- ☁️ **Cloud-First Database** - Supabase PostgreSQL for transactions, alerts & sanctions with SQLite fallback
 - ⚡ **RESTful API** - Complete API for external integrations
 - 🔄 **Auto-Fallback System** - Seamless failover from cloud to local storage
 
@@ -62,7 +62,7 @@ graph TB
     subgraph "Dynamic AML Platform"
         WebApp[🌐 Web Dashboard<br/>HTML/CSS/JavaScript]
         API[⚡ Flask API<br/>Python]
-        DB[(🗄️ SQLite Database<br/>Transactions & Alerts)]
+        DB[(🗄️ Hybrid Database<br/>Supabase + SQLite)]
         Engine[🔍 AML Engine<br/>Detection Rules]
         Generator[🎲 Transaction Generator<br/>Test Data Creation]
         Loader[📥 Sanctions Loader<br/>External Data Integration]
@@ -198,7 +198,7 @@ pip install -r requirements.txt
 ```bash
 # Create .env file with Supabase configuration (optional for cloud features)
 cat > .env << 'EOF'
-# Supabase Configuration (for cloud sanctions database)
+# Supabase Configuration (for cloud AML database)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key-here
 USE_SUPABASE_FOR_SANCTIONS=true
@@ -216,9 +216,9 @@ python app.py
 # System will automatically:
 # ✅ Initialize cloud/local database
 # ✅ Load live sanctions data (1.2M+ records if Supabase configured)
-# ✅ Generate test transactions
-# ✅ Start AML processing engine
-# ✅ Launch web dashboard
+# ✅ Generate test transactions (stored in Supabase as PENDING)
+# ✅ Start AML processing engine with transaction workflow
+# ✅ Launch web dashboard with live data
 ```
 
 ### 🌐 **4. Access Dashboard**
@@ -231,6 +231,42 @@ http://localhost:5000/api/health
 http://localhost:5000/api/statistics
 http://localhost:5000/api/alerts
 ```
+
+---
+
+## 🔄 Transaction Processing Workflow
+
+### 📊 **AML Transaction Lifecycle**
+
+```mermaid
+graph LR
+    Generate[🎲 Generate Sample Data] -->|Create| Pending[📋 PENDING Transactions]
+    Pending -->|Process| Engine[🔍 AML Engine Analysis]
+    Engine -->|Low Risk| Complete[✅ COMPLETED]
+    Engine -->|High Risk| Review[⚠️ UNDER_REVIEW]
+    Review -->|Generate| Alert[🚨 AML Alert Created]
+    
+    style Pending fill:#fff3cd
+    style Complete fill:#d4edda
+    style Review fill:#f8d7da
+    style Alert fill:#dc3545,color:#fff
+```
+
+### 🎯 **Processing Steps**
+
+1. **Generate Sample Data** - Creates realistic transactions with PENDING status
+2. **Process Pending Transactions** - Runs all AML detection rules
+3. **Risk Assessment** - Determines transaction outcome:
+   - **COMPLETED** - Low risk, normal transaction flow
+   - **UNDER_REVIEW** - High risk, requires investigation
+4. **Alert Generation** - Creates alerts for UNDER_REVIEW transactions with evidence
+
+### 🚨 **Alert Types Generated**
+
+| Alert Code | Description | Risk Score | Trigger |
+|------------|-------------|------------|---------|
+| **R1_SANCTIONS_MATCH** | Sanctions screening hit | 95% | Name matches OFAC/UN lists |
+| **R3_HIGH_RISK_CORRIDOR** | High-risk geography | 85% | Transactions to/from sanctioned countries |
 
 ---
 
@@ -286,8 +322,9 @@ def process_transaction(self, transaction_data):
 | `/api/health` | GET | System health check | Status and version |
 | `/api/statistics` | GET | System statistics | Counts and metrics |
 | `/api/alerts` | GET | Active alerts list | Alert details with evidence |
-| `/api/transactions` | GET | Recent transactions | Transaction history |
+| `/api/transactions` | GET | Recent transactions | Transaction history with status filtering |
 | `/api/transactions` | POST | Process single transaction | Generated alerts |
+| `/api/transactions/process` | POST | Process pending transactions | Batch processing of PENDING → COMPLETED/UNDER_REVIEW |
 | `/api/transactions/batch` | POST | Process transaction batch | Batch processing results |
 | `/api/generate/process` | GET/POST | Generate test data | Sample transactions and alerts |
 | `/api/sanctions/search` | GET | Search sanctions by name | Matching entries |
@@ -327,18 +364,18 @@ console.log(`Generated ${result.alerts_generated} alerts`);
 
 ### 🌟 **Supabase-First Design**
 
-The AML system uses a **cloud-first architecture** with automatic fallback for maximum reliability and scalability:
+The AML system uses a **cloud-first architecture** with Supabase PostgreSQL for all data (transactions, alerts, sanctions) and automatic SQLite fallback for maximum reliability and scalability:
 
 ```mermaid
 graph TB
     subgraph "Cloud Storage (Primary)"
-        Supabase[☁️ Supabase PostgreSQL<br/>1.2M+ Sanctions Records]
+        Supabase[☁️ Supabase PostgreSQL<br/>Transactions, Alerts & 1.2M+ Sanctions]
         SB_API[🔌 Supabase REST API]
         SB_Auth[🔐 Row Level Security]
     end
     
     subgraph "Local Storage (Fallback)"
-        SQLite[💾 SQLite Database<br/>5 Fallback Records]
+        SQLite[💾 SQLite Database<br/>Local Fallback Data]
         Local_API[🔧 Local Database API]
     end
     
@@ -363,11 +400,11 @@ graph TB
 
 | Feature | **Supabase (Primary)** | **SQLite (Fallback)** |
 |---------|------------------------|------------------------|
-| **Records** | 1,373+ (expandable to 1.2M+) | 5 test records |
+| **Data Storage** | Transactions, alerts & 1.2M+ sanctions | Essential fallback data |
 | **Performance** | Cloud-optimized with indexes | Local file access |
 | **Reliability** | 99.9% uptime SLA | Always available |
 | **Scalability** | Unlimited | Limited by disk space |
-| **Real-time Updates** | Live OpenSanctions data | Static fallback data |
+| **Real-time Updates** | Live transaction processing | Static fallback data |
 | **Search Speed** | <50ms with full-text search | <10ms for basic queries |
 
 ### 🔧 **Automatic Fallback System**
@@ -443,7 +480,41 @@ curl -X POST "https://aml-controller.onrender.com/api/sanctions/refresh"
 ### 📋 **Supabase Schema (Primary)**
 
 ```sql
--- Supabase PostgreSQL schema for sanctions (cloud storage)
+-- Supabase PostgreSQL schema for AML system (cloud storage)
+
+-- AML Transactions table
+CREATE TABLE transactions (
+    transaction_id TEXT PRIMARY KEY,
+    account_id TEXT,
+    amount DECIMAL(15,2),
+    currency TEXT DEFAULT 'USD',
+    transaction_type TEXT,
+    transaction_date TIMESTAMP WITH TIME ZONE,
+    beneficiary_account TEXT,
+    beneficiary_name TEXT,
+    beneficiary_bank TEXT,
+    beneficiary_country TEXT,
+    origin_country TEXT,
+    purpose TEXT,
+    status TEXT DEFAULT 'PENDING', -- PENDING, COMPLETED, UNDER_REVIEW
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- AML Alerts table
+CREATE TABLE alerts (
+    alert_id TEXT PRIMARY KEY,
+    transaction_id TEXT REFERENCES transactions(transaction_id),
+    typology TEXT NOT NULL, -- R1_SANCTIONS_MATCH, R3_HIGH_RISK_CORRIDOR, etc.
+    risk_score INTEGER,
+    alert_reason TEXT,
+    evidence JSONB DEFAULT '{}',
+    status TEXT DEFAULT 'OPEN', -- OPEN, INVESTIGATING, CLOSED
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Sanctions table
 CREATE TABLE sanctions (
     id BIGSERIAL PRIMARY KEY,
     entity_id TEXT NOT NULL,
@@ -464,13 +535,21 @@ CREATE TABLE sanctions (
 );
 
 -- Performance indexes
+CREATE INDEX idx_transactions_status ON transactions(status);
+CREATE INDEX idx_transactions_date ON transactions(transaction_date);
+CREATE INDEX idx_alerts_transaction_id ON alerts(transaction_id);
+CREATE INDEX idx_alerts_typology ON alerts(typology);
 CREATE INDEX idx_sanctions_name ON sanctions(name);
 CREATE INDEX idx_sanctions_name_normalized ON sanctions(name_normalized);
 CREATE INDEX idx_sanctions_entity_id ON sanctions(entity_id);
 CREATE INDEX idx_sanctions_name_search ON sanctions USING gin(to_tsvector('english', name));
 
 -- Row Level Security
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sanctions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all operations on transactions" ON transactions FOR ALL USING (true);
+CREATE POLICY "Allow all operations on alerts" ON alerts FOR ALL USING (true);
 CREATE POLICY "Allow all operations on sanctions" ON sanctions FOR ALL USING (true);
 ```
 
