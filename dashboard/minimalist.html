@@ -435,26 +435,35 @@
             <div class="system-status">
                 <div class="status-dot" id="statusDot"></div>
                 <span id="statusText">System Online</span>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;" id="serverUptime">Uptime: -</div>
             </div>
         </header>
 
         <!-- Statistics Cards -->
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card">
-                <div class="stat-number" id="totalAlerts">-</div>
-                <div class="stat-label">Active Alerts</div>
+                <div class="stat-number" id="criticalAlerts">-</div>
+                <div class="stat-label">Critical Alerts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="highRiskAlerts">-</div>
+                <div class="stat-label">High Risk Alerts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="mediumRiskAlerts">-</div>
+                <div class="stat-label">Medium Risk Alerts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="lowRiskAlerts">-</div>
+                <div class="stat-label">Low Risk Alerts</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number" id="totalTransactions">-</div>
-                <div class="stat-label">Transactions</div>
+                <div class="stat-label">Total Transactions</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number" id="totalSanctions">-</div>
-                <div class="stat-label">Sanctions Entries</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="systemUptime">99.9%</div>
-                <div class="stat-label">System Uptime</div>
+                <div class="stat-label">Sanctions Records</div>
             </div>
         </div>
 
@@ -603,9 +612,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeCharts();
             loadDashboardData();
+            updateServerUptime();
             
             // Auto-refresh every 30 seconds
             setInterval(loadDashboardData, 30000);
+            
+            // Update uptime every 5 seconds
+            setInterval(updateServerUptime, 5000);
         });
 
         // Initialize Charts with minimal style
@@ -734,11 +747,46 @@
             }
         }
 
+        // Server start time for uptime calculation
+        const serverStartTime = Date.now();
+        
         // Update Statistics
         function updateStatistics(stats) {
-            document.getElementById('totalAlerts').textContent = stats.active_alerts || stats.total_alerts || 0;
+            // Update risk-based alert counts
+            const riskLevels = stats.alerts_by_risk || {};
+            document.getElementById('criticalAlerts').textContent = riskLevels.Critical || 0;
+            document.getElementById('highRiskAlerts').textContent = riskLevels.High || 0;
+            document.getElementById('mediumRiskAlerts').textContent = riskLevels.Medium || 0;
+            document.getElementById('lowRiskAlerts').textContent = riskLevels.Low || 0;
+            
+            // Update transaction and sanctions counts
             document.getElementById('totalTransactions').textContent = stats.total_transactions || 0;
             document.getElementById('totalSanctions').textContent = stats.total_sanctions || 0;
+        }
+        
+        // Update server uptime
+        function updateServerUptime() {
+            const uptime = Date.now() - serverStartTime;
+            const uptimeString = formatUptime(uptime);
+            document.getElementById('serverUptime').textContent = `Uptime: ${uptimeString}`;
+        }
+        
+        // Format uptime duration
+        function formatUptime(milliseconds) {
+            const seconds = Math.floor(milliseconds / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+            
+            if (days > 0) {
+                return `${days}d ${hours % 24}h ${minutes % 60}m`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes % 60}m`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds % 60}s`;
+            } else {
+                return `${seconds}s`;
+            }
         }
 
         // Update Alerts Table and Chart
