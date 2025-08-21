@@ -534,6 +534,60 @@ def delete_transactions():
             'error': str(e)
         }), 500
 
+@app.route('/api/transactions/delete-all', methods=['POST'])
+def delete_all_transactions():
+    """Delete ALL transactions and related alerts"""
+    try:
+        if not db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not initialized'
+            }), 503
+        
+        conn = db.get_connection()
+        
+        # Get count before deletion
+        cursor = conn.execute("SELECT COUNT(*) as count FROM transactions")
+        total_transactions = cursor.fetchone()['count']
+        
+        cursor = conn.execute("SELECT COUNT(*) as count FROM alerts")
+        total_alerts = cursor.fetchone()['count']
+        
+        # Delete all alerts first (due to foreign key constraints)
+        conn.execute("DELETE FROM alerts")
+        deleted_alerts = conn.total_changes
+        
+        # Delete all transactions
+        conn.execute("DELETE FROM transactions")
+        deleted_transactions = conn.total_changes - deleted_alerts
+        
+        # Reset auto-increment counters
+        conn.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+        conn.execute("DELETE FROM sqlite_sequence WHERE name='alerts'")
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'All transactions and alerts deleted successfully',
+            'deleted': {
+                'transactions': deleted_transactions,
+                'alerts': deleted_alerts,
+                'total_transactions_before': total_transactions,
+                'total_alerts_before': total_alerts
+            },
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 @app.route('/api/transactions/process', methods=['POST'])
 def process_pending_transactions():
     """Process pending transactions through AML engine with Plane.so integration"""
