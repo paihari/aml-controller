@@ -461,10 +461,6 @@
                 <div class="stat-number" id="totalTransactions">-</div>
                 <div class="stat-label">Total Transactions</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number" id="totalSanctions">-</div>
-                <div class="stat-label">Sanctions Records</div>
-            </div>
         </div>
 
         <!-- Controls -->
@@ -534,6 +530,18 @@
                             </tr>
                         </tbody>
                     </table>
+                    
+                    <!-- Alerts Pagination Controls -->
+                    <div class="pagination" id="alertsPaginationControls">
+                        <button id="alertsPrevBtn" onclick="changeAlertsPage(-1)" disabled>← Previous</button>
+                        <span id="alertsPageInfo">Page 1 of 1</span>
+                        <button id="alertsNextBtn" onclick="changeAlertsPage(1)" disabled>Next →</button>
+                        <select id="alertsPageSizeSelect" onchange="changeAlertsPageSize()" class="page-size-select">
+                            <option value="5">5 per page</option>
+                            <option value="10" selected>10 per page</option>
+                            <option value="25">25 per page</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -606,6 +614,12 @@
         let totalTransactions = 0;
         let allTransactions = [];
         let filteredTransactions = [];
+        
+        // Alerts pagination variables
+        let currentAlertsPage = 1;
+        let alertsPageSize = 10;
+        let totalAlerts = 0;
+        let allAlerts = [];
         let currentStatusFilter = '';
 
         // Initialize Dashboard
@@ -759,9 +773,8 @@
             document.getElementById('mediumRiskAlerts').textContent = riskLevels.Medium || 0;
             document.getElementById('lowRiskAlerts').textContent = riskLevels.Low || 0;
             
-            // Update transaction and sanctions counts
+            // Update transaction count
             document.getElementById('totalTransactions').textContent = stats.total_transactions || 0;
-            document.getElementById('totalSanctions').textContent = stats.total_sanctions || 0;
         }
         
         // Update server uptime
@@ -791,13 +804,17 @@
 
         // Update Alerts Table and Chart
         function updateAlerts(alerts, preCalculatedTypologies = null, preCalculatedRisk = null) {
-            const tbody = document.getElementById('alertsTableBody');
+            // Store all alerts for pagination
+            allAlerts = alerts || [];
+            totalAlerts = allAlerts.length;
+            
             let alertTypes = {};
             let riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0 };
 
             if (!alerts || alerts.length === 0) {
+                const tbody = document.getElementById('alertsTableBody');
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No active alerts</td></tr>';
-                // Still update charts with empty data
+                updateAlertsControls();
                 updateCharts({}, riskLevels);
                 return;
             }
@@ -815,24 +832,29 @@
                 riskLevels = { Critical: 0, High: 0, Medium: 0, Low: 0, ...preCalculatedRisk };
             }
 
-            tbody.innerHTML = alerts.map(alert => {
-                // If no pre-calculated data, count alert types
-                if (!preCalculatedTypologies) {
-                    const cleanTypology = formatTypology(alert.typology);
-                    alertTypes[cleanTypology] = (alertTypes[cleanTypology] || 0) + 1;
-                }
+            // Calculate pagination and display current page
+            displayAlertsPage();
+            updateAlertsControls();
 
+            // Update charts with data
+            updateCharts(alertTypes, riskLevels);
+        }
+        
+        // Display current page of alerts
+        function displayAlertsPage() {
+            const tbody = document.getElementById('alertsTableBody');
+            const startIndex = (currentAlertsPage - 1) * alertsPageSize;
+            const endIndex = startIndex + alertsPageSize;
+            const pageAlerts = allAlerts.slice(startIndex, endIndex);
+            
+            if (pageAlerts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No alerts on this page</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = pageAlerts.map(alert => {
                 // Get risk score for styling
                 const riskScore = alert.risk_score || 0;
-                
-                // Count risk levels only if no pre-calculated data
-                if (!preCalculatedRisk) {
-                    if (riskScore >= 0.9) riskLevels.Critical++;
-                    else if (riskScore >= 0.7) riskLevels.High++;
-                    else if (riskScore >= 0.5) riskLevels.Medium++;
-                    else riskLevels.Low++;
-                }
-
                 const riskClass = riskScore >= 0.9 ? 'risk-critical' : 
                                  riskScore >= 0.7 ? 'risk-high' : 'risk-medium';
                 
@@ -852,10 +874,37 @@
                     </tr>
                 `;
             }).join('');
-
-            // Update charts with data
-            console.log('Updating charts with:', { alertTypes, riskLevels }); // Debug log
-            updateCharts(alertTypes, riskLevels);
+        }
+        
+        // Update alerts pagination controls
+        function updateAlertsControls() {
+            const totalPages = Math.ceil(totalAlerts / alertsPageSize);
+            
+            document.getElementById('alertsPageInfo').textContent = 
+                `Page ${currentAlertsPage} of ${totalPages} (${totalAlerts} alerts)`;
+            
+            document.getElementById('alertsPrevBtn').disabled = currentAlertsPage <= 1;
+            document.getElementById('alertsNextBtn').disabled = currentAlertsPage >= totalPages;
+        }
+        
+        // Change alerts page
+        function changeAlertsPage(direction) {
+            const totalPages = Math.ceil(totalAlerts / alertsPageSize);
+            currentAlertsPage += direction;
+            
+            if (currentAlertsPage < 1) currentAlertsPage = 1;
+            if (currentAlertsPage > totalPages) currentAlertsPage = totalPages;
+            
+            displayAlertsPage();
+            updateAlertsControls();
+        }
+        
+        // Change alerts page size
+        function changeAlertsPageSize() {
+            alertsPageSize = parseInt(document.getElementById('alertsPageSizeSelect').value);
+            currentAlertsPage = 1; // Reset to first page
+            displayAlertsPage();
+            updateAlertsControls();
         }
 
         // Update Transactions Table
