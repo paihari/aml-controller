@@ -6,8 +6,10 @@ Convert OpenSanctions NDJSON data to Supabase format and insert via API
 import json
 import re
 import requests
+import os
 from datetime import datetime
 from typing import Dict, List
+from dotenv import load_dotenv
 
 def normalize_name(name: str) -> str:
     """Normalize name for comparison (same as AML engine)"""
@@ -127,9 +129,14 @@ def fetch_and_convert_data(dataset_url: str, dataset_key: str, limit: int = 100)
 
 def insert_to_supabase(sanctions: List[Dict], batch_size: int = 100):
     """Insert sanctions data to Supabase in batches"""
+    load_dotenv()
     
-    supabase_url = "https://skfyzufwzjiixgiyfgtt.supabase.co"
-    api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrZnl6dWZ3emppaXhnaXlmZ3R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3MTY4MDcsImV4cCI6MjA3MTI5MjgwN30.4nfQwci8X7gScJTeYSPp5FejV7lPGZBFqvJ2G2tdTAY"
+    supabase_url = os.getenv('SUPABASE_URL')
+    api_key = os.getenv('SUPABASE_ANON_KEY')
+    
+    if not supabase_url or not api_key:
+        print("❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env file")
+        return 0
     
     headers = {
         "apikey": api_key,
@@ -166,16 +173,25 @@ def insert_to_supabase(sanctions: List[Dict], batch_size: int = 100):
 if __name__ == "__main__":
     print("🚀 Starting OpenSanctions data loading...")
     
-    # Test with debarment dataset first (smaller)
-    dataset_url = "https://data.opensanctions.org/datasets/20250819/debarment/senzing.json"
-    dataset_key = "debarment"
+    # Load multiple datasets
+    datasets = [
+        ("https://data.opensanctions.org/datasets/20250819/debarment/senzing.json", "debarment", 1000),
+        ("https://data.opensanctions.org/datasets/20250819/peps/senzing.json", "peps", 500),
+        ("https://data.opensanctions.org/datasets/20250819/sanctions/senzing.json", "sanctions", 1000)
+    ]
     
-    # Fetch and convert data (limit to 500 records for testing)
-    sanctions_data = fetch_and_convert_data(dataset_url, dataset_key, limit=500)
+    total_inserted = 0
     
-    if sanctions_data:
-        print(f"\n💾 Inserting {len(sanctions_data)} records to Supabase...")
-        inserted_count = insert_to_supabase(sanctions_data, batch_size=50)
-        print(f"✅ Successfully inserted {inserted_count} sanctions records")
-    else:
-        print("❌ No data to insert")
+    for dataset_url, dataset_key, limit in datasets:
+        print(f"\n📥 Loading {dataset_key} dataset...")
+        sanctions_data = fetch_and_convert_data(dataset_url, dataset_key, limit=limit)
+        
+        if sanctions_data:
+            print(f"💾 Inserting {len(sanctions_data)} {dataset_key} records to Supabase...")
+            inserted_count = insert_to_supabase(sanctions_data, batch_size=50)
+            total_inserted += inserted_count
+            print(f"✅ Successfully inserted {inserted_count} {dataset_key} records")
+        else:
+            print(f"❌ No {dataset_key} data to insert")
+    
+    print(f"\n🎉 Total sanctions loaded: {total_inserted:,} records")

@@ -131,7 +131,7 @@ if __name__ == "__main__":
     else:
         print("\n❌ Connection test failed - please create the table first")
         print("\n📋 Manual Steps Required:")
-        print("1. Go to https://skfyzufwzjiixgiyfgtt.supabase.co")
+        print("1. Go to your Supabase project dashboard")
         print("2. Navigate to SQL Editor")  
         print("3. Copy the SQL from supabase_schema.sql")
         print("4. Run the SQL to create the sanctions table")
