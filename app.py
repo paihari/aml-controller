@@ -553,8 +553,7 @@ def process_pending_transactions():
         cursor = conn.execute("""
             SELECT * FROM transactions 
             WHERE status = 'PENDING' 
-            ORDER BY created_at DESC
-            LIMIT 50
+            ORDER BY created_at ASC
         """)
         pending_transactions = [dict(row) for row in cursor.fetchall()]
         
@@ -566,6 +565,9 @@ def process_pending_transactions():
                 'timestamp': datetime.datetime.now().isoformat()
             })
         
+        total_pending = len(pending_transactions)
+        print(f"🔄 Processing {total_pending} pending transactions...")
+        
         # Process transactions through AML engine
         processed_count = 0
         completed_count = 0
@@ -574,8 +576,12 @@ def process_pending_transactions():
         plane_items_created = 0
         processing_results = []
         
-        for tx in pending_transactions:
+        for i, tx in enumerate(pending_transactions, 1):
             try:
+                # Progress logging for large batches
+                if total_pending > 10 and i % 10 == 0:
+                    print(f"📊 Progress: {i}/{total_pending} transactions processed")
+                
                 # Convert database row to transaction format
                 transaction_data = {
                     'transaction_id': tx['transaction_id'],
@@ -645,8 +651,9 @@ def process_pending_transactions():
         # Prepare response
         response_data = {
             'success': True,
-            'message': f'Processed {processed_count} pending transactions through AML engine',
+            'message': f'Processed {processed_count} pending transactions through AML engine (found {total_pending} total)',
             'processed_count': processed_count,
+            'total_found': total_pending,
             'results': {
                 'completed': completed_count,
                 'failed': failed_count,
