@@ -74,19 +74,35 @@ class DynamicAMLEngine:
     
     def detect_alerts_for_existing_transaction(self, transaction_data: Dict) -> List[Dict]:
         """Run AML detection rules on existing transaction without storing it"""
+        transaction_id = transaction_data.get('transaction_id', 'UNKNOWN')
+        beneficiary_name = transaction_data.get('beneficiary_name', 'Unknown')
+        
+        print(f"🚀 DEBUG: Starting AML detection for existing transaction {transaction_id}")
+        print(f"🚀 DEBUG: Transaction data: beneficiary='{beneficiary_name}', country={transaction_data.get('beneficiary_country')}")
+        
         alerts = []
         
         # Run all detection rules (same as process_transaction but without storing)
-        alerts.extend(self._check_sanctions_screening(transaction_data))
+        print(f"🚀 DEBUG: Running sanctions screening...")
+        sanctions_alerts = self._check_sanctions_screening(transaction_data)
+        alerts.extend(sanctions_alerts)
+        print(f"🚀 DEBUG: Sanctions screening returned {len(sanctions_alerts)} alerts")
+        
+        print(f"🚀 DEBUG: Running other AML rules...")
         alerts.extend(self._check_high_risk_geography(transaction_data))
         alerts.extend(self._check_structuring_patterns(transaction_data))
         alerts.extend(self._check_velocity_anomalies(transaction_data))
         alerts.extend(self._check_round_trip_transactions(transaction_data))
         
-        # Store alerts in database
-        for alert in alerts:
-            self.db.add_alert(alert)
+        print(f"🚀 DEBUG: Total alerts generated: {len(alerts)}")
         
+        # Store alerts in database
+        print(f"🚀 DEBUG: Storing {len(alerts)} alerts in database...")
+        for alert in alerts:
+            result = self.db.add_alert(alert)
+            print(f"🚀 DEBUG: Alert {alert['alert_id']} stored: {result}")
+        
+        print(f"🚀 DEBUG: AML detection completed for {transaction_id}")
         return alerts
     
     def process_batch(self, transactions: List[Dict]) -> Dict:
@@ -115,20 +131,40 @@ class DynamicAMLEngine:
         alerts = []
         
         beneficiary_name = transaction.get('beneficiary_name', '').strip()
+        transaction_id = transaction.get('transaction_id', 'UNKNOWN')
+        
+        print(f"🔍 DEBUG: Starting sanctions screening for {transaction_id}")
+        print(f"🔍 DEBUG: Beneficiary name: '{beneficiary_name}'")
+        
         if not beneficiary_name:
+            print(f"🔍 DEBUG: No beneficiary name, skipping sanctions check")
             return alerts
         
-        # Search sanctions database (Supabase or local)
+        # Search sanctions database (Supabase only as authoritative source)
+        sanctions_matches = []
         if self.use_supabase and self.supabase_db:
-            sanctions_matches = self.supabase_db.get_sanctions_by_name(beneficiary_name)
+            print(f"🔍 DEBUG: Using Supabase for sanctions lookup")
+            try:
+                sanctions_matches = self.supabase_db.get_sanctions_by_name(beneficiary_name)
+                print(f"🔍 DEBUG: Supabase returned {len(sanctions_matches)} matches")
+            except Exception as e:
+                print(f"🔍 DEBUG: Supabase lookup failed: {e}")
         else:
+            print(f"🔍 DEBUG: Using local DB for sanctions lookup (Supabase not available)")
+            # Fallback to local DB only if Supabase is not available
             sanctions_matches = self.db.get_sanctions_by_name(beneficiary_name)
+            print(f"🔍 DEBUG: Local DB returned {len(sanctions_matches)} matches")
         
-        for match in sanctions_matches:
+        for i, match in enumerate(sanctions_matches):
+            match_name = match.get('name', 'UNKNOWN')
+            print(f"🔍 DEBUG: Processing match {i+1}: '{match_name}'")
+            
             # Calculate match confidence
-            confidence = self._calculate_name_similarity(beneficiary_name, match['name'])
+            confidence = self._calculate_name_similarity(beneficiary_name, match_name)
+            print(f"🔍 DEBUG: Name similarity confidence: {confidence:.2f}")
             
             if confidence >= 0.8:  # High confidence match
+                print(f"🔍 DEBUG: High confidence match found! Creating alert...")
                 alert = {
                     'alert_id': f"ALERT-{str(uuid.uuid4())[:8].upper()}",
                     'subject_id': transaction['transaction_id'],
@@ -149,7 +185,11 @@ class DynamicAMLEngine:
                     }
                 }
                 alerts.append(alert)
+                print(f"🔍 DEBUG: Alert created: {alert['alert_id']}")
+            else:
+                print(f"🔍 DEBUG: Low confidence match ({confidence:.2f}), skipping")
         
+        print(f"🔍 DEBUG: Sanctions screening completed. Generated {len(alerts)} alerts")
         return alerts
     
     def _check_high_risk_geography(self, transaction: Dict) -> List[Dict]:

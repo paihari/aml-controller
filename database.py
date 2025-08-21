@@ -6,17 +6,47 @@ Database setup and management for dynamic AML system
 import sqlite3
 import json
 import datetime
+import os
+import re
 from typing import Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Try to import Supabase AML client
+try:
+    from supabase_aml import SupabaseAMLDB
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 class AMLDatabase:
     def __init__(self, db_path: str = "aml_database.db"):
         self.db_path = db_path
+        self.use_supabase = os.getenv('USE_SUPABASE_AML', 'true').lower() == 'true'
+        
+        # Initialize Supabase AML client if available
+        self.supabase_aml = None
+        if self.use_supabase and SUPABASE_AVAILABLE:
+            try:
+                self.supabase_aml = SupabaseAMLDB()
+                print("✅ Using Supabase for transactions and alerts storage")
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Supabase AML, falling back to SQLite: {e}")
+                self.use_supabase = False
+        else:
+            print("✅ Using SQLite for transactions and alerts storage")
+        
         self.init_database()
     
     def get_connection(self):
-        """Get database connection"""
-        conn = sqlite3.connect(self.db_path)
+        """Get database connection with proper configuration for concurrent access"""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)  # 30 second timeout
         conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+        # Enable WAL mode for better concurrent access
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
         return conn
     
     def init_database(self):
@@ -157,6 +187,11 @@ class AMLDatabase:
     
     def add_transaction(self, transaction_data: Dict) -> str:
         """Add a new transaction and return transaction ID"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.add_transaction(transaction_data)
+        
+        # SQLite fallback
         conn = self.get_connection()
         
         try:
@@ -192,33 +227,57 @@ class AMLDatabase:
     
     def add_alert(self, alert_data: Dict) -> str:
         """Add a new alert and return alert ID"""
-        conn = self.get_connection()
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.add_alert(alert_data)
         
-        try:
-            conn.execute("""
-                INSERT INTO alerts 
-                (alert_id, subject_id, subject_type, typology, risk_score, evidence)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                alert_data.get('alert_id'),
-                alert_data.get('subject_id'),
-                alert_data.get('subject_type', 'TRANSACTION'),
-                alert_data.get('typology'),
-                alert_data.get('risk_score'),
-                json.dumps(alert_data.get('evidence', {}))
-            ))
+        # SQLite fallback with retry logic
+        import time
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = self.get_connection()
             
-            conn.commit()
-            return alert_data.get('alert_id')
-            
-        except Exception as e:
-            print(f"Error inserting alert: {e}")
-            return None
-        finally:
-            conn.close()
+            try:
+                conn.execute("""
+                    INSERT INTO alerts 
+                    (alert_id, subject_id, subject_type, typology, risk_score, evidence)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    alert_data.get('alert_id'),
+                    alert_data.get('subject_id'),
+                    alert_data.get('subject_type', 'TRANSACTION'),
+                    alert_data.get('typology'),
+                    alert_data.get('risk_score'),
+                    json.dumps(alert_data.get('evidence', {}))
+                ))
+                
+                conn.commit()
+                return alert_data.get('alert_id')
+                
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    print(f"Database locked, retrying in {0.5 * (attempt + 1)} seconds (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    print(f"Error inserting alert after {attempt + 1} attempts: {e}")
+                    return None
+            except Exception as e:
+                print(f"Error inserting alert: {e}")
+                return None
+            finally:
+                conn.close()
+        
+        return None
     
     def get_active_alerts(self, limit: int = 50) -> List[Dict]:
         """Get active alerts"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.get_active_alerts(limit)
+        
+        # SQLite fallback
         conn = self.get_connection()
         
         cursor = conn.execute("""
@@ -253,6 +312,11 @@ class AMLDatabase:
     
     def get_recent_transactions(self, limit: int = 100) -> List[Dict]:
         """Get recent transactions"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.get_transactions(limit)
+        
+        # SQLite fallback
         conn = self.get_connection()
         
         cursor = conn.execute("""
@@ -264,6 +328,57 @@ class AMLDatabase:
         transactions = [dict(row) for row in cursor]
         conn.close()
         return transactions
+    
+    def get_transaction_by_id(self, transaction_id: str) -> Optional[Dict]:
+        """Get a specific transaction by ID"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.get_transaction_by_id(transaction_id)
+        
+        # SQLite fallback
+        conn = self.get_connection()
+        try:
+            cursor = conn.execute("SELECT * FROM transactions WHERE transaction_id = ?", (transaction_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+    
+    def update_transaction_status(self, transaction_id: str, status: str) -> bool:
+        """Update transaction status"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.update_transaction_status(transaction_id, status)
+        
+        # SQLite fallback
+        conn = self.get_connection()
+        try:
+            cursor = conn.execute(
+                "UPDATE transactions SET status = ? WHERE transaction_id = ?", 
+                (status, transaction_id)
+            )
+            updated = cursor.rowcount > 0
+            conn.commit()
+            return updated
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+    
+    def get_pending_transactions(self) -> List[Dict]:
+        """Get all pending transactions"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            return self.supabase_aml.get_pending_transactions()
+        
+        # SQLite fallback
+        conn = self.get_connection()
+        try:
+            cursor = conn.execute("SELECT * FROM transactions WHERE status = 'PENDING' ORDER BY created_at")
+            return [dict(row) for row in cursor]
+        finally:
+            conn.close()
     
     def delete_transaction(self, transaction_id: str) -> bool:
         """Delete a transaction by transaction_id"""
@@ -311,8 +426,79 @@ class AMLDatabase:
         finally:
             conn.close()
     
+    def clear_all_transactions_and_alerts(self) -> Dict:
+        """Clear all transactions and alerts (for testing)"""
+        # Use Supabase if available, otherwise fall back to SQLite
+        if self.use_supabase and self.supabase_aml:
+            try:
+                tx_result = self.supabase_aml.delete_all_transactions()
+                alert_result = self.supabase_aml.delete_all_alerts()
+                
+                return {
+                    'success': True,
+                    'deleted_transactions': tx_result.get('deleted_transactions', 0),
+                    'deleted_alerts': alert_result.get('deleted_alerts', 0),
+                    'source': 'Supabase'
+                }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'source': 'Supabase'
+                }
+        
+        # SQLite fallback
+        conn = self.get_connection()
+        try:
+            # Count before deletion
+            tx_cursor = conn.execute("SELECT COUNT(*) as count FROM transactions")
+            tx_count = tx_cursor.fetchone()['count']
+            
+            alert_cursor = conn.execute("SELECT COUNT(*) as count FROM alerts")
+            alert_count = alert_cursor.fetchone()['count']
+            
+            # Delete all data
+            conn.execute("DELETE FROM transactions")
+            conn.execute("DELETE FROM alerts")
+            conn.execute("DELETE FROM alert_history")
+            
+            conn.commit()
+            
+            return {
+                'success': True,
+                'deleted_transactions': tx_count,
+                'deleted_alerts': alert_count,
+                'source': 'SQLite'
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            return {
+                'success': False,
+                'error': str(e),
+                'source': 'SQLite'
+            }
+        finally:
+            conn.close()
+    
     def get_statistics(self, supabase_sanctions_count: int = None) -> Dict:
         """Get database statistics"""
+        # Use Supabase if available for transactions and alerts statistics
+        if self.use_supabase and self.supabase_aml:
+            supabase_stats = self.supabase_aml.get_statistics()
+            
+            # Add sanctions count (either provided or from SQLite)
+            if supabase_sanctions_count is not None:
+                supabase_stats['total_sanctions'] = supabase_sanctions_count
+            else:
+                conn = self.get_connection()
+                cursor = conn.execute("SELECT COUNT(*) as count FROM sanctions")
+                supabase_stats['total_sanctions'] = cursor.fetchone()['count']
+                conn.close()
+            
+            return supabase_stats
+        
+        # SQLite fallback
         conn = self.get_connection()
         
         stats = {}

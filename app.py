@@ -223,32 +223,28 @@ def get_transactions():
         status = request.args.get('status', None)
         transaction_id = request.args.get('transaction_id', None)
         
-        conn = db.get_connection()
-        
         if transaction_id:
             # Get specific transaction by ID
-            cursor = conn.execute("""
-                SELECT * FROM transactions 
-                WHERE transaction_id = ?
-            """, (transaction_id,))
+            transaction = db.get_transaction_by_id(transaction_id)
+            transactions = [transaction] if transaction else []
         elif status:
-            # Filter by status
-            cursor = conn.execute("""
-                SELECT * FROM transactions 
-                WHERE status = ?
-                ORDER BY created_at DESC 
-                LIMIT ?
-            """, (status, limit))
+            # Filter by status - use Supabase method if available
+            if db.use_supabase and db.supabase_aml:
+                transactions = db.supabase_aml.get_transactions(limit=limit, status=status)
+            else:
+                # SQLite fallback with status filter
+                conn = db.get_connection()
+                cursor = conn.execute("""
+                    SELECT * FROM transactions 
+                    WHERE status = ?
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                """, (status, limit))
+                transactions = [dict(row) for row in cursor]
+                conn.close()
         else:
             # Get all recent transactions
-            cursor = conn.execute("""
-                SELECT * FROM transactions 
-                ORDER BY created_at DESC 
-                LIMIT ?
-            """, (limit,))
-        
-        transactions = [dict(row) for row in cursor]
-        conn.close()
+            transactions = db.get_recent_transactions(limit)
         
         return jsonify({
             'success': True,
@@ -378,6 +374,32 @@ def generate_and_process():
             'error': str(e)
         }), 500
 
+@app.route('/api/generate/demo-sanctions', methods=['POST'])
+def generate_demo_sanctions():
+    """Generate demo transactions with well-known sanctioned entities"""
+    try:
+        # Generate demo sanctioned transactions
+        demo_transactions = transaction_generator.generate_demo_sanctioned_transactions()
+        stored_count = transaction_generator.store_transactions(demo_transactions)
+        
+        # Get the names for display
+        entity_names = [tx['beneficiary_name'] for tx in demo_transactions]
+        
+        return jsonify({
+            'success': True,
+            'generated_count': len(demo_transactions),
+            'stored_count': stored_count,
+            'entity_names': entity_names,
+            'message': f'Generated {stored_count} demo transactions with sanctioned entities',
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/sanctions/refresh', methods=['POST'])
 def refresh_sanctions():
     """Refresh sanctions data from external sources"""
@@ -437,10 +459,11 @@ def search_sanctions():
                 'error': 'Name parameter is required'
             }), 400
         
-        # Use Supabase if available, otherwise local DB
+        # Use Supabase as the authoritative source for sanctions data
         if hasattr(aml_engine, 'supabase_db') and aml_engine.supabase_db:
             sanctions = aml_engine.supabase_db.get_sanctions_by_name(name)
         else:
+            # Fallback to local DB only if Supabase is not available
             sanctions = db.get_sanctions_by_name(name)
         
         return jsonify({
@@ -629,14 +652,8 @@ def process_pending_transactions():
         from plane_integration import PlaneIntegration
         plane = PlaneIntegration()
         
-        # Get all pending transactions
-        conn = db.get_connection()
-        cursor = conn.execute("""
-            SELECT * FROM transactions 
-            WHERE status = 'PENDING' 
-            ORDER BY created_at ASC
-        """)
-        pending_transactions = [dict(row) for row in cursor.fetchall()]
+        # Get all pending transactions using proper database abstraction
+        pending_transactions = db.get_pending_transactions()
         
         if not pending_transactions:
             return jsonify({
@@ -692,12 +709,8 @@ def process_pending_transactions():
                     if plane_item:
                         plane_items_created += 1
                 
-                # Update transaction status
-                conn.execute("""
-                    UPDATE transactions 
-                    SET status = ?
-                    WHERE id = ?
-                """, (outcome, tx['id']))
+                # Update transaction status using proper database abstraction
+                db.update_transaction_status(tx['transaction_id'], outcome)
                 
                 # Track results
                 processed_count += 1
@@ -718,16 +731,10 @@ def process_pending_transactions():
                 
             except Exception as e:
                 print(f"❌ Error processing transaction {tx['transaction_id']}: {e}")
-                # Mark as failed
-                conn.execute("""
-                    UPDATE transactions 
-                    SET status = 'FAILED'
-                    WHERE id = ?
-                """, (tx['id'],))
+                # Mark as failed using proper database abstraction
+                db.update_transaction_status(tx['transaction_id'], 'FAILED')
                 failed_count += 1
                 continue
-        
-        conn.commit()
         
         # Prepare response
         response_data = {

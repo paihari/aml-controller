@@ -460,7 +460,7 @@
 
         <!-- Controls -->
         <div class="controls">
-            <button class="btn active" onclick="refreshData()">Refresh Data</button>
+            <button class="btn active" onclick="goToMainDashboard()">Main Dashboard</button>
             <button class="btn" onclick="initializeData()">Generate Sample Data</button>
             <button class="btn" id="processBtn" onclick="processTransactions()">Process Pending Transactions</button>
             <button class="btn" onclick="exportData()">Export Results</button>
@@ -905,8 +905,8 @@
         }
 
         // Control Functions
-        async function refreshData() {
-            await loadDashboardData();
+        function goToMainDashboard() {
+            window.location.href = '/';
         }
 
         async function initializeData() {

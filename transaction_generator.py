@@ -80,17 +80,57 @@ class TransactionGenerator:
     
     def generate_sanctions_risk_transaction(self) -> Dict:
         """Generate transaction involving sanctioned entity"""
-        # Get a sanctioned name from database
-        sanctions = self.db.get_sanctions_by_name("Vladimir")  # Try to get real sanctions data
-        
-        if sanctions:
-            sanctioned_name = sanctions[0]['name']
-            sanctioned_country = sanctions[0]['country'].split(',')[0] if sanctions[0]['country'] else 'RU'
-        else:
-            # Fallback to known sanctioned names
-            sanctioned_names = ['Vladimir Petrov', 'Dmitri Kozlov', 'Hassan Bin Rashid', 'Anna Volkov']
-            sanctioned_name = random.choice(sanctioned_names)
-            sanctioned_country = 'RU' if 'Vladimir' in sanctioned_name or 'Dmitri' in sanctioned_name or 'Anna' in sanctioned_name else 'IR'
+        # Try to get real sanctions data from Supabase
+        try:
+            # Import here to avoid circular import
+            from supabase_sanctions import SupabaseSanctionsDB
+            supabase_db = SupabaseSanctionsDB()
+            
+            # Try different common sanctioned names
+            test_names = ['Vladimir Putin', 'Kim Jong Un', 'Bashar al-Assad', 'Alexander Lukashenko', 'Tehran']
+            sanctions = None
+            
+            for test_name in test_names:
+                sanctions = supabase_db.get_sanctions_by_name(test_name)
+                if sanctions:
+                    break
+            
+            if sanctions:
+                sanctioned_entity = random.choice(sanctions)
+                sanctioned_name = sanctioned_entity['name']
+                # Parse countries from JSON if available
+                countries = sanctioned_entity.get('countries', '[]')
+                if isinstance(countries, str):
+                    import json
+                    try:
+                        countries_list = json.loads(countries)
+                        sanctioned_country = countries_list[0] if countries_list else 'RU'
+                    except:
+                        sanctioned_country = 'RU'
+                else:
+                    sanctioned_country = countries[0] if countries else 'RU'
+            else:
+                raise Exception("No Supabase data")
+                
+        except Exception as e:
+            print(f"⚠️ Could not fetch from Supabase: {e}")
+            # Enhanced fallback list with realistic sanctioned entities for testing
+            sanctioned_entities = [
+                {'name': 'Vladimir Putin', 'country': 'RU', 'program': 'RUSSIA_SANCTIONS'},
+                {'name': 'Kim Jong Un', 'country': 'KP', 'program': 'NORTH_KOREA_SANCTIONS'},
+                {'name': 'Bashar al-Assad', 'country': 'SY', 'program': 'SYRIA_SANCTIONS'},
+                {'name': 'Alexander Lukashenko', 'country': 'BY', 'program': 'BELARUS_SANCTIONS'},
+                {'name': 'Hassan Rouhani', 'country': 'IR', 'program': 'IRAN_SANCTIONS'},
+                {'name': 'Dmitri Medvedev', 'country': 'RU', 'program': 'RUSSIA_SANCTIONS'},
+                {'name': 'Ramzan Kadyrov', 'country': 'RU', 'program': 'MAGNITSKY_SANCTIONS'},
+                {'name': 'Viktor Yanukovych', 'country': 'UA', 'program': 'UKRAINE_SANCTIONS'},
+                {'name': 'Recep Erdogan', 'country': 'TR', 'program': 'TURKEY_SANCTIONS'},
+                {'name': 'Nicolas Maduro', 'country': 'VE', 'program': 'VENEZUELA_SANCTIONS'}
+            ]
+            
+            sanctioned_entity = random.choice(sanctioned_entities)
+            sanctioned_name = sanctioned_entity['name']
+            sanctioned_country = sanctioned_entity['country']
         
         return {
             'transaction_id': self.generate_transaction_id(),
@@ -242,10 +282,10 @@ class TransactionGenerator:
         """Generate a mixed batch of transactions with various risk levels"""
         transactions = []
         
-        # Distribution of transaction types
-        normal_count = int(total_count * 0.60)      # 60% normal
-        sanctions_count = int(total_count * 0.08)    # 8% sanctions risk
-        geography_count = int(total_count * 0.15)    # 15% geography risk
+        # Distribution of transaction types (enhanced for better testing)
+        normal_count = int(total_count * 0.45)      # 45% normal
+        sanctions_count = int(total_count * 0.25)   # 25% sanctions risk (increased for testing)
+        geography_count = int(total_count * 0.15)   # 15% geography risk
         
         # Generate normal transactions
         for _ in range(normal_count):
@@ -283,6 +323,38 @@ class TransactionGenerator:
         amounts.append(min(remaining, max_individual))
         
         return amounts
+    
+    def generate_demo_sanctioned_transactions(self) -> List[Dict]:
+        """Generate specific demo transactions with well-known sanctioned entities"""
+        demo_transactions = []
+        
+        # Most recognizable sanctioned entities for demo
+        demo_entities = [
+            {'name': 'Vladimir Putin', 'country': 'RU', 'amount': 1000000, 'purpose': 'Investment'},
+            {'name': 'Kim Jong Un', 'country': 'KP', 'amount': 750000, 'purpose': 'Trade finance'}, 
+            {'name': 'Bashar al-Assad', 'country': 'SY', 'amount': 500000, 'purpose': 'Equipment purchase'},
+            {'name': 'Nicolas Maduro', 'country': 'VE', 'amount': 300000, 'purpose': 'Energy contract'}
+        ]
+        
+        for entity in demo_entities:
+            transaction = {
+                'transaction_id': self.generate_transaction_id(),
+                'account_id': self.generate_account_id(),
+                'amount': entity['amount'],
+                'currency': 'USD',
+                'transaction_type': 'SWIFT',
+                'transaction_date': self.fake.date_between(start_date='-3d', end_date='today'),
+                'beneficiary_account': self.generate_account_id(),
+                'beneficiary_name': entity['name'],
+                'beneficiary_bank': random.choice(self.banks.get(entity['country'], ['UNKNOWN_BANK'])),
+                'beneficiary_country': entity['country'],
+                'origin_country': 'US',
+                'purpose': entity['purpose'],
+                'risk_factors': ['sanctions_entity', 'demo_transaction']
+            }
+            demo_transactions.append(transaction)
+        
+        return demo_transactions
     
     def store_transactions(self, transactions: List[Dict]) -> int:
         """Store generated transactions in database"""
