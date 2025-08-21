@@ -8,6 +8,7 @@ from flask_cors import CORS
 import datetime
 import json
 import os
+from typing import Dict, List, Tuple, Optional
 from database import AMLDatabase
 from dynamic_aml_engine import DynamicAMLEngine
 from transaction_generator import TransactionGenerator
@@ -535,13 +536,17 @@ def delete_transactions():
 
 @app.route('/api/transactions/process', methods=['POST'])
 def process_pending_transactions():
-    """Process pending transactions and update their status"""
+    """Process pending transactions through AML engine with Plane.so integration"""
     try:
-        if not db:
+        if not aml_engine:
             return jsonify({
                 'success': False,
-                'error': 'Database not initialized'
+                'error': 'AML engine not initialized'
             }), 503
+        
+        # Initialize Plane.so integration
+        from plane_integration import PlaneIntegration
+        plane = PlaneIntegration()
         
         # Get all pending transactions
         conn = db.get_connection()
@@ -561,54 +566,195 @@ def process_pending_transactions():
                 'timestamp': datetime.datetime.now().isoformat()
             })
         
-        # Process transactions - simulate different outcomes
-        import random
+        # Process transactions through AML engine
         processed_count = 0
         completed_count = 0
         failed_count = 0
         under_review_count = 0
+        plane_items_created = 0
+        processing_results = []
         
         for tx in pending_transactions:
-            # Simulate processing with different outcomes
-            outcome = random.choices(
-                ['COMPLETED', 'FAILED', 'UNDER_REVIEW'], 
-                weights=[0.85, 0.10, 0.05]  # 85% complete, 10% fail, 5% review
-            )[0]
-            
-            # Update transaction status
-            conn.execute("""
-                UPDATE transactions 
-                SET status = ?, created_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (outcome, tx['id']))
-            
-            processed_count += 1
-            if outcome == 'COMPLETED':
-                completed_count += 1
-            elif outcome == 'FAILED':
+            try:
+                # Convert database row to transaction format
+                transaction_data = {
+                    'transaction_id': tx['transaction_id'],
+                    'account_id': tx['account_id'],
+                    'amount': float(tx['amount']),
+                    'currency': tx['currency'],
+                    'sender_name': tx['sender_name'],
+                    'beneficiary_name': tx['beneficiary_name'],
+                    'sender_country': tx['sender_country'],
+                    'beneficiary_country': tx['beneficiary_country'],
+                    'sender_account': tx['sender_account'],
+                    'beneficiary_account': tx['beneficiary_account'],
+                    'transaction_date': tx['transaction_date'],
+                    'transaction_type': tx.get('transaction_type', 'WIRE_TRANSFER')
+                }
+                
+                # Run AML detection
+                alerts = aml_engine.process_transaction(transaction_data)
+                
+                # Determine transaction outcome based on alerts
+                outcome, requires_manual_review = _determine_transaction_outcome(alerts)
+                plane_item = None
+                
+                # Handle manual review cases
+                if requires_manual_review and plane.is_configured():
+                    plane_item = _create_plane_work_item(plane, transaction_data, alerts)
+                    if plane_item:
+                        plane_items_created += 1
+                
+                # Update transaction status
+                conn.execute("""
+                    UPDATE transactions 
+                    SET status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (outcome, tx['id']))
+                
+                # Track results
+                processed_count += 1
+                if outcome == 'COMPLETED':
+                    completed_count += 1
+                elif outcome == 'FAILED':
+                    failed_count += 1
+                else:  # UNDER_REVIEW
+                    under_review_count += 1
+                
+                processing_results.append({
+                    'transaction_id': tx['transaction_id'],
+                    'status': outcome,
+                    'alerts_generated': len(alerts),
+                    'plane_work_item': plane_item['work_item_id'] if plane_item else None,
+                    'requires_manual_review': requires_manual_review
+                })
+                
+            except Exception as e:
+                print(f"❌ Error processing transaction {tx['transaction_id']}: {e}")
+                # Mark as failed
+                conn.execute("""
+                    UPDATE transactions 
+                    SET status = 'FAILED', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (tx['id'],))
                 failed_count += 1
-            else:
-                under_review_count += 1
+                continue
         
         conn.commit()
         
-        return jsonify({
+        # Prepare response
+        response_data = {
             'success': True,
-            'message': f'Processed {processed_count} pending transactions',
+            'message': f'Processed {processed_count} pending transactions through AML engine',
             'processed_count': processed_count,
             'results': {
                 'completed': completed_count,
                 'failed': failed_count,
-                'under_review': under_review_count
+                'under_review': under_review_count,
+                'plane_work_items_created': plane_items_created
             },
+            'plane_integration': {
+                'configured': plane.is_configured(),
+                'workspace': plane.workspace_slug if plane.is_configured() else None,
+                'items_created': plane_items_created
+            },
+            'processing_details': processing_results,
             'timestamp': datetime.datetime.now().isoformat()
-        })
+        }
+        
+        return jsonify(response_data)
         
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+def _determine_transaction_outcome(alerts: List[Dict]) -> Tuple[str, bool]:
+    """
+    Determine transaction outcome based on AML alerts
+    Returns: (status, requires_manual_review)
+    """
+    if not alerts:
+        return 'COMPLETED', False
+    
+    # Check for high-risk alerts requiring manual review
+    high_risk_typologies = ['R1_SANCTIONS_MATCH']
+    critical_risk_threshold = 0.9
+    high_risk_threshold = 0.8
+    
+    max_risk_score = max(alert.get('risk_score', 0) for alert in alerts)
+    has_sanctions_match = any(alert.get('typology') in high_risk_typologies for alert in alerts)
+    
+    # Critical cases - require immediate manual review
+    if has_sanctions_match or max_risk_score >= critical_risk_threshold:
+        return 'UNDER_REVIEW', True
+    
+    # High risk cases - require manual review  
+    elif max_risk_score >= high_risk_threshold:
+        return 'UNDER_REVIEW', True
+    
+    # Medium risk - can be auto-processed but flagged
+    elif max_risk_score >= 0.6:
+        return 'COMPLETED', False  # Process but keep alerts for monitoring
+    
+    # Low risk - auto-approve
+    else:
+        return 'COMPLETED', False
+
+def _create_plane_work_item(plane: 'PlaneIntegration', transaction_data: Dict, alerts: List[Dict]) -> Optional[Dict]:
+    """Create appropriate Plane.so work item based on alert type"""
+    
+    # Find the highest priority alert
+    sanctions_alerts = [a for a in alerts if a.get('typology') == 'R1_SANCTIONS_MATCH']
+    geography_alerts = [a for a in alerts if a.get('typology') == 'R3_HIGH_RISK_CORRIDOR']
+    structuring_alerts = [a for a in alerts if a.get('typology') == 'R2_STRUCTURING']
+    
+    # Create work item based on most critical alert type
+    if sanctions_alerts:
+        # Sanctions match - highest priority
+        evidence = sanctions_alerts[0].get('evidence', {})
+        sanctions_match = {
+            'name': evidence.get('watchlist_name', 'Unknown'),
+            'match_confidence': evidence.get('match_confidence', 0),
+            'program': evidence.get('source', 'Unknown'),
+            'data_source': evidence.get('source', 'Unknown')
+        }
+        return plane.create_sanctions_match_item(transaction_data, sanctions_match)
+    
+    elif geography_alerts:
+        # High-risk geography
+        evidence = geography_alerts[0].get('evidence', {})
+        risk_details = {
+            'country_risk': evidence.get('country_risk', 'Unknown'),
+            'corridor_risk_score': evidence.get('corridor_risk_score', 0)
+        }
+        return plane.create_high_risk_geography_item(transaction_data, risk_details)
+    
+    elif structuring_alerts:
+        # Structuring pattern
+        evidence = structuring_alerts[0].get('evidence', {})
+        pattern_details = {
+            'transaction_count': evidence.get('transaction_count', 0),
+            'total_amount': evidence.get('total_amount', 0),
+            'pattern': evidence.get('pattern', 'Unknown'),
+            'date': evidence.get('date', 'Unknown')
+        }
+        return plane.create_structuring_pattern_item(transaction_data, pattern_details)
+    
+    else:
+        # Generic high-risk case
+        max_risk_alert = max(alerts, key=lambda x: x.get('risk_score', 0))
+        title = f"🚨 HIGH-RISK TRANSACTION: {transaction_data.get('transaction_id')}"
+        description = f"High-risk transaction detected with {len(alerts)} AML alerts requiring manual review."
+        
+        return plane.create_work_item(
+            title=title,
+            description=description,
+            transaction_data=transaction_data,
+            alert_data=alerts,
+            priority="high"
+        )
 
 def initialize_system():
     """Initialize AML system with error handling"""
