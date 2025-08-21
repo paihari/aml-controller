@@ -13,6 +13,7 @@ from database import AMLDatabase
 from dynamic_aml_engine import DynamicAMLEngine
 from transaction_generator import TransactionGenerator
 from sanctions_loader import SanctionsLoader
+from plane_integration import PlaneIntegration
 
 app = Flask(__name__)
 CORS(app)
@@ -153,6 +154,7 @@ try:
     aml_engine = DynamicAMLEngine(db)
     transaction_generator = TransactionGenerator(db)
     sanctions_loader = SanctionsLoader(db)
+    plane = PlaneIntegration()
     print("✅ AML components initialized successfully")
 except Exception as e:
     print(f"❌ Failed to initialize AML components: {e}")
@@ -161,6 +163,7 @@ except Exception as e:
     aml_engine = None
     transaction_generator = None
     sanctions_loader = None
+    plane = None
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -214,10 +217,38 @@ def get_alerts():
 
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():
-    """Get recent transactions"""
+    """Get recent transactions with optional status filtering"""
     try:
         limit = request.args.get('limit', 100, type=int)
-        transactions = db.get_recent_transactions(limit=limit)
+        status = request.args.get('status', None)
+        transaction_id = request.args.get('transaction_id', None)
+        
+        conn = db.get_connection()
+        
+        if transaction_id:
+            # Get specific transaction by ID
+            cursor = conn.execute("""
+                SELECT * FROM transactions 
+                WHERE transaction_id = ?
+            """, (transaction_id,))
+        elif status:
+            # Filter by status
+            cursor = conn.execute("""
+                SELECT * FROM transactions 
+                WHERE status = ?
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """, (status, limit))
+        else:
+            # Get all recent transactions
+            cursor = conn.execute("""
+                SELECT * FROM transactions 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """, (limit,))
+        
+        transactions = [dict(row) for row in cursor]
+        conn.close()
         
         return jsonify({
             'success': True,
@@ -321,7 +352,7 @@ def generate_transactions():
 
 @app.route('/api/generate/process', methods=['GET', 'POST'])
 def generate_and_process():
-    """Generate transactions and process them through AML engine"""
+    """Generate transactions in PENDING status (without processing)"""
     try:
         if request.method == 'GET':
             count = request.args.get('count', 20, type=int)
@@ -329,19 +360,15 @@ def generate_and_process():
             params = request.get_json() or {}
             count = params.get('count', 20)
         
-        # Generate transactions
+        # Generate transactions and store as PENDING
         transactions = transaction_generator.generate_mixed_batch(count)
-        
-        # Process through AML engine
-        results = aml_engine.process_batch(transactions)
+        stored_count = transaction_generator.store_transactions(transactions)
         
         return jsonify({
             'success': True,
             'generated_count': len(transactions),
-            'processed_count': results['processed_count'],
-            'alert_count': results['alert_count'],
-            'alerts': results['alerts'],
-            'processing_time': results['processing_time'].isoformat(),
+            'stored_count': stored_count,
+            'message': f'Generated {stored_count} transactions in PENDING status',
             'timestamp': datetime.datetime.now().isoformat()
         })
         
@@ -642,18 +669,18 @@ def process_pending_transactions():
                     'account_id': tx['account_id'],
                     'amount': float(tx['amount']),
                     'currency': tx['currency'],
-                    'sender_name': tx['sender_name'],
+                    'sender_name': tx.get('sender_name', 'Unknown'),  # Not stored in current schema
                     'beneficiary_name': tx['beneficiary_name'],
-                    'sender_country': tx['sender_country'],
+                    'origin_country': tx.get('origin_country', 'US'),  # Keep the original field name
                     'beneficiary_country': tx['beneficiary_country'],
-                    'sender_account': tx['sender_account'],
+                    'sender_account': tx.get('sender_account', tx['account_id']),  # Use account_id as fallback
                     'beneficiary_account': tx['beneficiary_account'],
                     'transaction_date': tx['transaction_date'],
                     'transaction_type': tx.get('transaction_type', 'WIRE_TRANSFER')
                 }
                 
-                # Run AML detection
-                alerts = aml_engine.process_transaction(transaction_data)
+                # Run AML detection on existing transaction
+                alerts = aml_engine.detect_alerts_for_existing_transaction(transaction_data)
                 
                 # Determine transaction outcome based on alerts
                 outcome, requires_manual_review = _determine_transaction_outcome(alerts)
@@ -668,7 +695,7 @@ def process_pending_transactions():
                 # Update transaction status
                 conn.execute("""
                     UPDATE transactions 
-                    SET status = ?, updated_at = CURRENT_TIMESTAMP
+                    SET status = ?
                     WHERE id = ?
                 """, (outcome, tx['id']))
                 
@@ -694,7 +721,7 @@ def process_pending_transactions():
                 # Mark as failed
                 conn.execute("""
                     UPDATE transactions 
-                    SET status = 'FAILED', updated_at = CURRENT_TIMESTAMP
+                    SET status = 'FAILED'
                     WHERE id = ?
                 """, (tx['id'],))
                 failed_count += 1

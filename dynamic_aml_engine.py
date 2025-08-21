@@ -72,6 +72,23 @@ class DynamicAMLEngine:
         
         return alerts
     
+    def detect_alerts_for_existing_transaction(self, transaction_data: Dict) -> List[Dict]:
+        """Run AML detection rules on existing transaction without storing it"""
+        alerts = []
+        
+        # Run all detection rules (same as process_transaction but without storing)
+        alerts.extend(self._check_sanctions_screening(transaction_data))
+        alerts.extend(self._check_high_risk_geography(transaction_data))
+        alerts.extend(self._check_structuring_patterns(transaction_data))
+        alerts.extend(self._check_velocity_anomalies(transaction_data))
+        alerts.extend(self._check_round_trip_transactions(transaction_data))
+        
+        # Store alerts in database
+        for alert in alerts:
+            self.db.add_alert(alert)
+        
+        return alerts
+    
     def process_batch(self, transactions: List[Dict]) -> Dict:
         """Process a batch of transactions"""
         results = {

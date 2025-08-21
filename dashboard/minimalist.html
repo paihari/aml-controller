@@ -242,6 +242,147 @@
             color: #999;
             font-style: italic;
         }
+
+        /* Progress Bar */
+        .progress-container {
+            background: #ffffff;
+            border: 1px solid #e8e1d6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .progress-text {
+            font-weight: 600;
+            color: #2d2d2d;
+        }
+        
+        .progress-percent {
+            font-weight: 600;
+            color: #4caf50;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: #f0ebe2;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #66bb6a);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-details {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-top: 1px solid #f0ebe2;
+            margin-top: 10px;
+        }
+        
+        .pagination button {
+            background: #ffffff;
+            border: 1px solid #d1c7b8;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #2d2d2d;
+            transition: all 0.2s ease;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: #f5f2ed;
+            border-color: #c4b8a6;
+        }
+        
+        .pagination button:disabled {
+            background: #f8f5f0;
+            color: #999;
+            cursor: not-allowed;
+            border-color: #e8e1d6;
+        }
+        
+        .page-size-select, .filter-select {
+            background: #ffffff;
+            border: 1px solid #d1c7b8;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #2d2d2d;
+        }
+        
+        .count-badge {
+            background: #4caf50;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .section-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Status badges */
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-under-review {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-failed {
+            background: #f5c6cb;
+            color: #721c24;
+        }
         
         /* Responsive design */
         @media (max-width: 768px) {
@@ -321,8 +462,22 @@
         <div class="controls">
             <button class="btn active" onclick="refreshData()">Refresh Data</button>
             <button class="btn" onclick="initializeData()">Generate Sample Data</button>
-            <button class="btn" onclick="processTransactions()">Process Pending Transactions</button>
+            <button class="btn" id="processBtn" onclick="processTransactions()">Process Pending Transactions</button>
             <button class="btn" onclick="exportData()">Export Results</button>
+        </div>
+
+        <!-- Progress Bar for Processing -->
+        <div id="progressContainer" class="progress-container" style="display: none;">
+            <div class="progress-header">
+                <span id="progressText">Processing transactions...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div class="progress-details">
+                <small id="progressDetails">Initializing...</small>
+            </div>
         </div>
 
         <!-- Charts -->
@@ -377,27 +532,52 @@
         <!-- Recent Transactions Table -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">Recent Transactions</div>
+                <div class="section-title">
+                    Transactions 
+                    <span id="transactionCount" class="count-badge"></span>
+                </div>
+                <div class="section-controls">
+                    <select id="statusFilter" onchange="filterTransactions()" class="filter-select">
+                        <option value="">All Status</option>
+                        <option value="PENDING">Pending</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="UNDER_REVIEW">Under Review</option>
+                        <option value="FAILED">Failed</option>
+                    </select>
+                </div>
             </div>
             <div class="section-content">
                 <div class="table-container">
                     <table id="transactionsTable">
                         <thead>
                             <tr>
-                                <th>Transaction ID</th>
+                                <th>ID</th>
                                 <th>Amount</th>
-                                <th>From</th>
-                                <th>To</th>
+                                <th>Beneficiary</th>
+                                <th>Country</th>
                                 <th>Date</th>
                                 <th>Status</th>
+                                <th>Type</th>
                             </tr>
                         </thead>
                         <tbody id="transactionsTableBody">
                             <tr>
-                                <td colspan="6" class="loading">Loading transactions...</td>
+                                <td colspan="7" class="loading">Loading transactions...</td>
                             </tr>
                         </tbody>
                     </table>
+                    
+                    <!-- Pagination Controls -->
+                    <div class="pagination" id="paginationControls">
+                        <button id="prevBtn" onclick="changePage(-1)" disabled>← Previous</button>
+                        <span id="pageInfo">Page 1 of 1</span>
+                        <button id="nextBtn" onclick="changePage(1)" disabled>Next →</button>
+                        <select id="pageSizeSelect" onchange="changePageSize()" class="page-size-select">
+                            <option value="10">10 per page</option>
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -410,6 +590,14 @@
             : `${window.location.origin}/api`;
 
         let alertChart, riskChart;
+        
+        // Pagination variables
+        let currentPage = 1;
+        let pageSize = 10;
+        let totalTransactions = 0;
+        let allTransactions = [];
+        let filteredTransactions = [];
+        let currentStatusFilter = '';
 
         // Initialize Dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -514,7 +702,7 @@
                     // Update all components with the comprehensive data
                     updateStatistics(dashboardData.statistics);
                     updateAlerts(dashboardData.alerts, dashboardData.alert_typologies, dashboardData.statistics.alerts_by_risk);
-                    updateTransactions(dashboardData.transactions);
+                    await loadTransactionsData();
                 } else {
                     // Fallback to individual endpoints if dashboard endpoint fails
                     const [healthResponse, statsResponse, alertsResponse, transactionsResponse] = await Promise.all([
@@ -537,10 +725,7 @@
                     }
 
                     // Update transactions
-                    if (transactionsResponse && transactionsResponse.ok) {
-                        const transactions = await transactionsResponse.json();
-                        updateTransactions(transactions.data || transactions);
-                    }
+                    await loadTransactionsData();
                 }
 
             } catch (error) {
@@ -736,9 +921,9 @@
                 
                 if (response.ok) {
                     const result = await response.json();
-                    const message = `Generated and processed ${result.generated_count || 0} transactions:\n` +
-                                  `🚨 Alerts generated: ${result.alert_count || 0}\n` +
-                                  `⚡ Processing time: ${result.processing_time || 'N/A'}`;
+                    const message = `Generated ${result.generated_count || 0} transactions in PENDING status:\n` +
+                                  `📝 Stored: ${result.stored_count || 0}\n` +
+                                  `⏳ Status: Ready for processing`;
                     alert(message);
                     await loadDashboardData();
                 } else {
@@ -752,43 +937,81 @@
 
         async function processTransactions() {
             try {
-                // First, get recent transactions to reprocess through AML
-                const transactionsResponse = await fetch(`${API_BASE}/transactions?limit=20`);
-                if (!transactionsResponse.ok) {
-                    alert('Failed to fetch transactions for processing');
+                // Get pending transactions count first
+                const pendingResponse = await fetch(`${API_BASE}/transactions?status=PENDING`);
+                if (!pendingResponse.ok) {
+                    alert('Failed to check pending transactions');
                     return;
                 }
                 
-                const transactionsData = await transactionsResponse.json();
-                const transactions = transactionsData.data || [];
+                const pendingData = await pendingResponse.json();
+                const pendingCount = pendingData.count || 0;
                 
-                if (transactions.length === 0) {
-                    alert('No transactions found to process');
+                if (pendingCount === 0) {
+                    alert('No pending transactions to process');
                     return;
                 }
                 
-                // Process transactions through AML detection
-                const response = await fetch(`${API_BASE}/transactions/batch`, {
+                // Show progress bar and disable button
+                showProgressBar();
+                const processBtn = document.getElementById('processBtn');
+                processBtn.disabled = true;
+                processBtn.textContent = 'Processing...';
+                
+                // Simulate progress updates
+                updateProgress(0, 'Initializing AML engine...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                updateProgress(25, `Processing ${pendingCount} pending transactions...`);
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                updateProgress(50, 'Running sanctions screening...');
+                await new Promise(resolve => setTimeout(resolve, 400));
+                
+                updateProgress(75, 'Analyzing risk patterns...');
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Process pending transactions through AML detection
+                const response = await fetch(`${API_BASE}/transactions/process`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ transactions })
+                    }
                 });
+                
+                updateProgress(90, 'Finalizing results...');
                 
                 if (response.ok) {
                     const result = await response.json();
-                    const message = `Processed ${result.processed_count || 0} transactions through AML detection:\n` +
-                                  `🚨 Alerts generated: ${result.alert_count || 0}\n` +
-                                  `⚡ Processing time: ${result.processing_time || 'N/A'}`;
-                    alert(message);
+                    updateProgress(100, 'Processing complete!');
+                    
+                    const message = `${result.message || 'Processed transactions'}\n` +
+                                  `✅ Completed: ${result.results?.completed || 0}\n` +
+                                  `⚠️  Under Review: ${result.results?.under_review || 0}\n` +
+                                  `🎯 Plane Items: ${result.plane_integration?.items_created || 0}`;
+                    
+                    // Hide progress bar after a short delay
+                    setTimeout(() => {
+                        hideProgressBar();
+                        alert(message);
+                    }, 1000);
+                    
+                    // Reload dashboard data
                     await loadDashboardData();
                 } else {
                     const error = await response.json();
+                    hideProgressBar();
                     alert(`Failed to process transactions: ${error.error || 'Unknown error'}`);
                 }
+                
             } catch (error) {
-                alert('Failed to process transactions');
+                hideProgressBar();
+                alert(`Error processing transactions: ${error.message}`);
+            } finally {
+                // Re-enable button
+                const processBtn = document.getElementById('processBtn');
+                processBtn.disabled = false;
+                processBtn.textContent = 'Process Pending Transactions';
             }
         }
 
@@ -809,6 +1032,126 @@
             a.download = 'aml-alerts.csv';
             a.click();
             window.URL.revokeObjectURL(url);
+        }
+
+        // Progress bar functions
+        function showProgressBar() {
+            document.getElementById('progressContainer').style.display = 'block';
+        }
+        
+        function hideProgressBar() {
+            document.getElementById('progressContainer').style.display = 'none';
+        }
+        
+        function updateProgress(percent, message) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressDetails').textContent = message;
+        }
+
+        // Pagination functions
+        function loadTransactionsWithPagination() {
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
+            
+            displayTransactions(paginatedTransactions);
+            updatePaginationControls();
+        }
+        
+        function displayTransactions(transactions) {
+            const tbody = document.getElementById('transactionsTableBody');
+            const countBadge = document.getElementById('transactionCount');
+            
+            if (transactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="loading">No transactions found</td></tr>';
+                countBadge.textContent = '0';
+                return;
+            }
+            
+            countBadge.textContent = filteredTransactions.length;
+            
+            tbody.innerHTML = transactions.map(tx => {
+                const statusClass = `status-${tx.status.toLowerCase().replace('_', '-')}`;
+                return `
+                    <tr>
+                        <td><code>${tx.transaction_id.substring(0, 12)}...</code></td>
+                        <td><strong>$${parseFloat(tx.amount || 0).toLocaleString()}</strong></td>
+                        <td>${tx.beneficiary_name || 'N/A'}</td>
+                        <td><span class="country-flag">${tx.beneficiary_country || 'N/A'}</span></td>
+                        <td>${tx.transaction_date || 'N/A'}</td>
+                        <td><span class="status-badge ${statusClass}">${tx.status}</span></td>
+                        <td>${tx.transaction_type || 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function updatePaginationControls() {
+            const totalPages = Math.ceil(filteredTransactions.length / pageSize);
+            
+            document.getElementById('prevBtn').disabled = currentPage <= 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        
+        function changePage(direction) {
+            const totalPages = Math.ceil(filteredTransactions.length / pageSize);
+            const newPage = currentPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                loadTransactionsWithPagination();
+            }
+        }
+        
+        function changePageSize() {
+            const select = document.getElementById('pageSizeSelect');
+            pageSize = parseInt(select.value);
+            currentPage = 1; // Reset to first page
+            loadTransactionsWithPagination();
+        }
+        
+        function filterTransactions() {
+            const select = document.getElementById('statusFilter');
+            currentStatusFilter = select.value;
+            currentPage = 1; // Reset to first page
+            
+            if (currentStatusFilter) {
+                filteredTransactions = allTransactions.filter(tx => tx.status === currentStatusFilter);
+            } else {
+                filteredTransactions = [...allTransactions];
+            }
+            
+            loadTransactionsWithPagination();
+        }
+        
+        // Update the loadDashboardData function to use pagination
+        async function loadTransactionsData() {
+            try {
+                const response = await fetch(`${API_BASE}/transactions?limit=1000`);
+                if (response.ok) {
+                    const data = await response.json();
+                    allTransactions = data.data || [];
+                    
+                    // Apply current filter
+                    if (currentStatusFilter) {
+                        filteredTransactions = allTransactions.filter(tx => tx.status === currentStatusFilter);
+                    } else {
+                        filteredTransactions = [...allTransactions];
+                    }
+                    
+                    // Reset to first page
+                    currentPage = 1;
+                    loadTransactionsWithPagination();
+                } else {
+                    document.getElementById('transactionsTableBody').innerHTML = 
+                        '<tr><td colspan="7" class="loading">Failed to load transactions</td></tr>';
+                }
+            } catch (error) {
+                document.getElementById('transactionsTableBody').innerHTML = 
+                    '<tr><td colspan="7" class="loading">Error loading transactions</td></tr>';
+            }
         }
     </script>
 </body>
