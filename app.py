@@ -143,10 +143,10 @@ def load_opensanctions_batch(dataset_url: str, dataset_key: str, limit: int = 10
         else:
             inserted_count = 0
         
-        return new_entities, len(existing_ids), None
+        return inserted_count, len(existing_ids), None
         
     except Exception as e:
-        return [], 0, str(e)
+        return 0, 0, str(e)
 
 def check_existing_sanctions_supabase(entity_ids: List[str]) -> List[str]:
     """Check which entity IDs already exist in Supabase"""
@@ -599,15 +599,13 @@ def refresh_sanctions():
                 # Limit per dataset to keep batch size manageable
                 dataset_limit = min(batch_size // len(datasets) if dataset == 'all' else batch_size, 200)
                 
-                new_entities, skipped_count, error = load_opensanctions_batch(
+                loaded_count, skipped_count, error = load_opensanctions_batch(
                     dataset_url, dataset_key, limit=dataset_limit
                 )
                 
                 if error:
                     errors.append(f"{dataset_key}: {error}")
                     continue
-                
-                loaded_count = len(new_entities)
                 total_loaded += loaded_count
                 total_skipped += skipped_count
                 total_processed += loaded_count + skipped_count
