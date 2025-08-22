@@ -629,10 +629,14 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
         initial_sanctions = current_stats.get('sanctions_count', 0)
         
         # Use existing sanctions loader with limited batch size
+        print(f"🔍 DEBUG: Setting batch_size = {batch_size} on sanctions_loader")
         original_limit = getattr(sanctions_loader, '_batch_limit', None)
+        print(f"🔍 DEBUG: Original limit was: {original_limit}")
         sanctions_loader._batch_limit = batch_size
+        print(f"🔍 DEBUG: After setting, _batch_limit = {getattr(sanctions_loader, '_batch_limit', 'NOT_SET')}")
         
         # Force refresh to get latest data from OpenSanctions dataset files
+        print(f"🔍 DEBUG: About to call force_refresh_sanctions_data()")
         results = sanctions_loader.force_refresh_sanctions_data()
         
         # Restore original limit

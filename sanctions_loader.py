@@ -96,10 +96,16 @@ class SanctionsLoader:
                     per_dataset_limit = getattr(self, '_dataset_batch_limit', None)
                     global_batch_limit = getattr(self, '_batch_limit', None)
                     
+                    print(f"🔍 DEBUG: {dataset_key} - per_dataset_limit={per_dataset_limit}, global_batch_limit={global_batch_limit}")
+                    print(f"🔍 DEBUG: {dataset_key} - total lines available: {len(lines)}")
+                    
                     effective_limit = per_dataset_limit or global_batch_limit
                     if effective_limit:
+                        original_line_count = len(lines)
                         lines = lines[:effective_limit]
-                        print(f"📦 Applying batch limit: {effective_limit} records for {dataset_key}")
+                        print(f"📦 Applying batch limit: {effective_limit} records for {dataset_key} (reduced from {original_line_count} to {len(lines)})")
+                    else:
+                        print(f"⚠️ DEBUG: No effective limit for {dataset_key} - processing all {len(lines)} lines")
                     
                     for line in lines:
                         if line.strip():
@@ -369,15 +375,19 @@ class SanctionsLoader:
         
         # Apply batch limit distribution if set
         batch_limit = getattr(self, '_batch_limit', None)
+        print(f"🔍 DEBUG: _batch_limit attribute = {batch_limit}")
         if batch_limit:
             # Distribute batch limit across datasets
             dataset_count = len(self.datasets)
             per_dataset_limit = max(1, batch_limit // dataset_count)
-            print(f"📦 Distributing batch limit: {per_dataset_limit} records per dataset")
+            print(f"📦 Distributing batch limit: {batch_limit} total → {per_dataset_limit} records per dataset ({dataset_count} datasets)")
             
             # Temporarily set per-dataset limit
             original_limit = getattr(self, '_dataset_batch_limit', None)
             self._dataset_batch_limit = per_dataset_limit
+            print(f"🔍 DEBUG: Set _dataset_batch_limit = {per_dataset_limit}")
+        else:
+            print("⚠️ DEBUG: No batch limit found - will load full datasets")
         
         # Load each dataset
         for dataset_key in self.datasets.keys():
