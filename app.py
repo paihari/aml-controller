@@ -578,15 +578,22 @@ def refresh_sanctions():
         dataset = params.get('dataset', 'all')
         batch_size = params.get('batch_size', 100)
         
+        # Debug marker to ensure we're using the latest code
+        print(f"🔍 REFRESH ENDPOINT: Using latest code version with batch_size={batch_size}")
+        
         # Check if OpenSanctions API key is available
         load_dotenv()
         opensanctions_api_key = os.getenv('OPENSANCTIONS_API_KEY')
         
+        # Debug: Always show which path we're taking
+        print(f"🔍 API KEY CHECK: opensanctions_api_key = {opensanctions_api_key}")
         if opensanctions_api_key:
             # Use OpenSanctions API (paid service)
+            print(f"🔍 TAKING API PATH")
             return _refresh_sanctions_via_api(dataset, batch_size, opensanctions_api_key)
         else:
             # Use OpenSanctions dataset files (free public data)
+            print(f"🔍 TAKING DATASET FILE PATH")
             return _refresh_sanctions_via_datasets(dataset, batch_size)
             
     except Exception as e:
@@ -609,7 +616,12 @@ def _refresh_sanctions_via_api(dataset: str, batch_size: int, api_key: str):
         'total_skipped': 0,
         'total_processed': 0,
         'source': 'OpenSanctions_API',
-        'note': 'API key detected but implementation pending'
+        'note': 'API key detected but implementation pending',
+        'debug_info': [
+            f'API key detected: {api_key[:10]}...',
+            'Using OpenSanctions API path (not implemented)',
+            'This should not happen if no API key is set'
+        ]
     })
 
 def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
