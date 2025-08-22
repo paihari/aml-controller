@@ -412,10 +412,9 @@
                             <div class="control-group">
                                 <label class="control-label">Batch Size</label>
                                 <select class="control-input" id="sanctionsBatchSize">
+                                    <option value="50">50 records</option>
+                                    <option value="100" selected>100 records</option>
                                     <option value="500">500 records</option>
-                                    <option value="1000" selected>1000 records</option>
-                                    <option value="2500">2500 records</option>
-                                    <option value="5000">5000 records</option>
                                 </select>
                             </div>
                             <button class="btn btn-primary" onclick="refreshSanctions()" id="refreshSanctionsBtn">
