@@ -615,28 +615,33 @@ def _refresh_sanctions_via_api(dataset: str, batch_size: int, api_key: str):
 def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
     """Refresh sanctions using OpenSanctions dataset files (free public data)"""
     try:
+        debug_info = []
+        
         if not sanctions_loader:
             return jsonify({
                 'success': False,
                 'error': 'Sanctions loader not initialized',
                 'total_loaded': 0,
                 'total_skipped': 0,
-                'total_processed': 0
+                'total_processed': 0,
+                'debug_info': ['Sanctions loader not initialized']
             }), 503
         
         # Get current sanctions count before loading
         current_stats = aml_engine.get_alert_statistics()
         initial_sanctions = current_stats.get('sanctions_count', 0)
+        debug_info.append(f"Initial sanctions count: {initial_sanctions}")
         
         # Use existing sanctions loader with limited batch size
-        print(f"🔍 DEBUG: Setting batch_size = {batch_size} on sanctions_loader")
+        debug_info.append(f"Setting batch_size = {batch_size} on sanctions_loader")
         original_limit = getattr(sanctions_loader, '_batch_limit', None)
-        print(f"🔍 DEBUG: Original limit was: {original_limit}")
+        debug_info.append(f"Original limit was: {original_limit}")
         sanctions_loader._batch_limit = batch_size
-        print(f"🔍 DEBUG: After setting, _batch_limit = {getattr(sanctions_loader, '_batch_limit', 'NOT_SET')}")
+        actual_limit = getattr(sanctions_loader, '_batch_limit', 'NOT_SET')
+        debug_info.append(f"After setting, _batch_limit = {actual_limit}")
         
         # Force refresh to get latest data from OpenSanctions dataset files
-        print(f"🔍 DEBUG: About to call force_refresh_sanctions_data()")
+        debug_info.append("About to call force_refresh_sanctions_data()")
         results = sanctions_loader.force_refresh_sanctions_data()
         
         # Restore original limit
@@ -669,6 +674,11 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
             total_loaded = min(total_loaded, batch_size)
             total_skipped = total_processed - total_loaded
         
+        debug_info.append(f"Final sanctions count: {final_sanctions}")
+        debug_info.append(f"Calculated loaded: {total_loaded}")
+        debug_info.append(f"Results total_count: {results.get('total_count', 'N/A')}")
+        debug_info.append(f"Results success: {results.get('success', 'N/A')}")
+        
         return jsonify({
             'success': results.get('success', False),
             'total_loaded': total_loaded,
@@ -678,6 +688,7 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
             'dataset': dataset,
             'source': results.get('source', 'OpenSanctions_DatasetFiles'),
             'datasets_info': datasets_info,
+            'debug_info': debug_info,
             'timestamp': datetime.datetime.now().isoformat()
         })
         

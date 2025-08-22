@@ -649,6 +649,13 @@
                         const totalSkipped = data.total_skipped || 0;
                         const totalProcessed = data.total_processed || 0;
                         const batchSizeUsed = data.batch_size || batchSize;
+                        const debugInfo = data.debug_info || [];
+                        
+                        let debugHtml = '';
+                        if (debugInfo.length > 0) {
+                            debugHtml = '<br><br><strong>🔍 Debug Info:</strong><br>' + 
+                                       debugInfo.map(info => `• ${info}`).join('<br>');
+                        }
                         
                         document.getElementById('sanctionsResultsList').innerHTML = `
                             ✅ Loaded ${totalLoaded.toLocaleString()} new records<br>
@@ -659,6 +666,7 @@
                             🔄 Status: ${data.success ? 'Success' : 'Failed'}<br>
                             🗂️ Source: ${data.source || 'OpenSanctions'}<br>
                             ⏱️ Updated at: ${new Date().toLocaleTimeString()}
+                            ${debugHtml}
                         `;
                         
                         loadSanctionsStatus();
