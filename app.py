@@ -8,15 +8,184 @@ from flask_cors import CORS
 import datetime
 import json
 import os
+import re
+import requests
 from typing import Dict, List, Tuple, Optional
 from database import AMLDatabase
 from dynamic_aml_engine import DynamicAMLEngine
 from transaction_generator import TransactionGenerator
 from sanctions_loader import SanctionsLoader
 from plane_integration import PlaneIntegration
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 CORS(app)
+
+# OpenSanctions Integration Functions
+def normalize_name(name: str) -> str:
+    """Normalize name for comparison (same as AML engine)"""
+    if not name:
+        return ""
+    return re.sub(r'[^A-Z0-9]', '', name.upper().strip())
+
+def process_senzing_entity(entity: Dict, dataset_key: str) -> Dict:
+    """Process raw entity data from OpenSanctions Senzing format"""
+    try:
+        # Get primary name from NAMES array
+        names = entity.get('NAMES', [])
+        primary_name = ''
+        for name_obj in names:
+            if name_obj.get('NAME_TYPE') == 'PRIMARY':
+                primary_name = name_obj.get('NAME_FULL', '') or name_obj.get('NAME_ORG', '')
+                break
+        
+        if not primary_name and names:
+            # Fallback to first available name
+            first_name = names[0]
+            primary_name = first_name.get('NAME_FULL', '') or first_name.get('NAME_ORG', '')
+        
+        if not primary_name:
+            return None  # Skip entities without names
+        
+        # Get countries/nationalities
+        countries = []
+        country_data = entity.get('COUNTRIES', [])
+        for country_obj in country_data:
+            if country_obj.get('NATIONALITY'):
+                countries.append(country_obj['NATIONALITY'])
+            if country_obj.get('COUNTRY_OF_ASSOCIATION'):
+                countries.append(country_obj['COUNTRY_OF_ASSOCIATION'])
+        
+        # Determine entity type based on record type
+        schema = entity.get('RECORD_TYPE', 'Person')
+        if schema == 'ORGANIZATION':
+            schema = 'Organization'
+        elif schema == 'PERSON':
+            schema = 'Person'
+        else:
+            schema = 'Person'  # Default
+        
+        # Get risk topics
+        risks = entity.get('RISKS', [])
+        topics = []
+        for risk in risks:
+            topic = risk.get('TOPIC', '')
+            if topic:
+                topics.append(topic)
+        
+        # Add dataset-specific topic
+        if dataset_key not in topics:
+            topics.append(dataset_key)
+        
+        return {
+            'entity_id': f"{dataset_key}_{entity.get('RECORD_ID', '')}",
+            'name': primary_name,
+            'name_normalized': normalize_name(primary_name),
+            'schema_type': schema,
+            'countries': json.dumps(list(set(countries))),  # Remove duplicates
+            'topics': json.dumps(topics),
+            'datasets': json.dumps([dataset_key]),
+            'first_seen': datetime.datetime.now().strftime('%Y-%m-%d'),
+            'last_seen': datetime.datetime.now().strftime('%Y-%m-%d'),
+            'properties': json.dumps({
+                'dataset': dataset_key,
+                'load_date': datetime.datetime.now().strftime('%Y-%m-%d'),
+                'source': 'OpenSanctions_Daily_Senzing',
+                'record_id': entity.get('RECORD_ID'),
+                'record_type': entity.get('RECORD_TYPE'),
+                'last_change': entity.get('LAST_CHANGE'),
+                'url': entity.get('URL'),
+                'names': names,
+                'risks': risks
+            }),
+            'data_source': 'OpenSanctions_Daily',
+            'list_name': dataset_key,
+            'program': dataset_key
+        }
+    except Exception as e:
+        print(f"⚠️ Error processing entity: {e}")
+        return None
+
+def load_opensanctions_batch(dataset_url: str, dataset_key: str, limit: int = 100) -> tuple:
+    """Load OpenSanctions data in batches with duplicate checking"""
+    try:
+        print(f"📥 Fetching {dataset_key} data from {dataset_url}")
+        response = requests.get(dataset_url, timeout=30)
+        
+        if response.status_code != 200:
+            return [], 0, f"Failed to fetch data: HTTP {response.status_code}"
+        
+        # Parse NDJSON format
+        entities = []
+        lines = response.text.strip().split('\n')
+        
+        for i, line in enumerate(lines[:limit]):
+            if line.strip():
+                try:
+                    entity = json.loads(line)
+                    processed = process_senzing_entity(entity, dataset_key)
+                    if processed:
+                        entities.append(processed)
+                except json.JSONDecodeError as e:
+                    continue
+        
+        # Check for existing sanctions using Supabase
+        load_dotenv()
+        entity_ids = [e['entity_id'] for e in entities]
+        existing_ids = check_existing_sanctions_supabase(entity_ids)
+        
+        # Filter out existing sanctions
+        new_entities = [e for e in entities if e['entity_id'] not in existing_ids]
+        
+        # Insert new entities
+        if new_entities and hasattr(aml_engine, 'supabase_db') and aml_engine.supabase_db:
+            inserted_count = insert_sanctions_supabase(new_entities)
+        else:
+            inserted_count = 0
+        
+        return new_entities, len(existing_ids), None
+        
+    except Exception as e:
+        return [], 0, str(e)
+
+def check_existing_sanctions_supabase(entity_ids: List[str]) -> List[str]:
+    """Check which entity IDs already exist in Supabase"""
+    if not hasattr(aml_engine, 'supabase_db') or not aml_engine.supabase_db:
+        return []
+    
+    existing_ids = []
+    try:
+        # Check in batches of 100 to avoid URL length limits
+        for i in range(0, len(entity_ids), 100):
+            batch_ids = entity_ids[i:i + 100]
+            # Use Supabase client to check existing records
+            result = aml_engine.supabase_db.supabase.table('sanctions').select('entity_id').in_('entity_id', batch_ids).execute()
+            existing_ids.extend([record['entity_id'] for record in result.data])
+    except Exception as e:
+        print(f"⚠️ Warning: Error checking existing records: {e}")
+    
+    return existing_ids
+
+def insert_sanctions_supabase(sanctions: List[Dict]) -> int:
+    """Insert sanctions data to Supabase"""
+    if not hasattr(aml_engine, 'supabase_db') or not aml_engine.supabase_db:
+        return 0
+    
+    try:
+        # Insert in batches of 50
+        total_inserted = 0
+        batch_size = 50
+        
+        for i in range(0, len(sanctions), batch_size):
+            batch = sanctions[i:i + batch_size]
+            result = aml_engine.supabase_db.supabase.table('sanctions').insert(batch).execute()
+            if result.data:
+                total_inserted += len(result.data)
+        
+        return total_inserted
+    except Exception as e:
+        print(f"❌ Error inserting sanctions: {e}")
+        return 0
 
 @app.route('/')
 def home():
@@ -402,45 +571,78 @@ def generate_demo_sanctions():
 
 @app.route('/api/sanctions/refresh', methods=['POST'])
 def refresh_sanctions():
-    """Refresh sanctions data from external sources"""
+    """Refresh sanctions data from external sources using integrated loading"""
     try:
-        if not sanctions_loader:
-            return jsonify({
-                'success': False,
-                'error': 'Sanctions loader not initialized'
-            }), 503
-        
         # Get request parameters
         params = request.get_json() or {}
         dataset = params.get('dataset', 'all')
-        batch_size = params.get('batch_size', 1000)
+        batch_size = params.get('batch_size', 100)
         
-        # Force refresh to get latest data from OpenSanctions
-        results = sanctions_loader.force_refresh_sanctions_data()
+        # OpenSanctions dataset URLs (updated to latest date)
+        datasets = [
+            ("https://data.opensanctions.org/datasets/20250819/sanctions/senzing.json", "sanctions"),
+            ("https://data.opensanctions.org/datasets/20250819/peps/senzing.json", "peps"),
+            ("https://data.opensanctions.org/datasets/20250819/debarment/senzing.json", "debarment")
+        ]
         
-        # Extract summary information only (don't return full data)
-        datasets_summary = {}
-        if 'datasets' in results:
-            for key, dataset_info in results['datasets'].items():
-                datasets_summary[key] = {
-                    'success': dataset_info.get('success', False),
-                    'count': dataset_info.get('count', 0),
-                    'source': dataset_info.get('source', 'Unknown'),
-                    'date': dataset_info.get('date', 'Unknown')
-                }
+        total_loaded = 0
+        total_skipped = 0
+        total_processed = 0
+        errors = []
         
-        return jsonify({
-            'success': results.get('success', False),
-            'total_loaded': results.get('total_count', results.get('count', 0)),
-            'datasets': datasets_summary,
-            'source': results.get('source', 'OpenSanctions'),
+        # Process each dataset
+        for dataset_url, dataset_key in datasets:
+            if dataset != 'all' and dataset != dataset_key:
+                continue
+                
+            try:
+                # Limit per dataset to keep batch size manageable
+                dataset_limit = min(batch_size // len(datasets) if dataset == 'all' else batch_size, 200)
+                
+                new_entities, skipped_count, error = load_opensanctions_batch(
+                    dataset_url, dataset_key, limit=dataset_limit
+                )
+                
+                if error:
+                    errors.append(f"{dataset_key}: {error}")
+                    continue
+                
+                loaded_count = len(new_entities)
+                total_loaded += loaded_count
+                total_skipped += skipped_count
+                total_processed += loaded_count + skipped_count
+                
+                print(f"✅ {dataset_key}: loaded {loaded_count}, skipped {skipped_count}")
+                
+            except Exception as e:
+                errors.append(f"{dataset_key}: {str(e)}")
+                continue
+        
+        success = total_processed > 0 and len(errors) == 0
+        
+        response_data = {
+            'success': success,
+            'total_loaded': total_loaded,
+            'total_skipped': total_skipped,
+            'total_processed': total_processed,
+            'batch_size': batch_size,
+            'dataset': dataset,
+            'source': 'OpenSanctions_Daily',
             'timestamp': datetime.datetime.now().isoformat()
-        })
+        }
+        
+        if errors:
+            response_data['warnings'] = errors
+            
+        return jsonify(response_data)
         
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'total_loaded': 0,
+            'total_skipped': 0,
+            'total_processed': 0
         }), 500
 
 

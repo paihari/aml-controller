@@ -647,24 +647,18 @@
                         results.classList.remove('hidden');
                         
                         const totalLoaded = data.total_loaded || 0;
-                        const datasets = data.datasets || {};
-                        let datasetInfo = '';
-                        
-                        // Show breakdown by dataset if available
-                        if (Object.keys(datasets).length > 0) {
-                            datasetInfo = '<br>📋 Breakdown:<br>';
-                            for (const [key, info] of Object.entries(datasets)) {
-                                if (info.success) {
-                                    datasetInfo += `  • ${key}: ${info.count || 0} records<br>`;
-                                }
-                            }
-                        }
+                        const totalSkipped = data.total_skipped || 0;
+                        const totalProcessed = data.total_processed || 0;
+                        const batchSizeUsed = data.batch_size || batchSize;
                         
                         document.getElementById('sanctionsResultsList').innerHTML = `
-                            ✅ Loaded ${totalLoaded.toLocaleString()} records<br>
-                            📊 Dataset: ${dataset}<br>
-                            🔄 Status: ${data.success ? 'Success' : 'Partial'}<br>
-                            ${datasetInfo}
+                            ✅ Loaded ${totalLoaded.toLocaleString()} new records<br>
+                            ⏭️ Skipped ${totalSkipped.toLocaleString()} existing records<br>
+                            📊 Total processed: ${totalProcessed.toLocaleString()} records<br>
+                            📦 Batch size: ${batchSizeUsed}<br>
+                            📋 Dataset: ${dataset}<br>
+                            🔄 Status: ${data.success ? 'Success' : 'Failed'}<br>
+                            🗂️ Source: ${data.source || 'OpenSanctions'}<br>
                             ⏱️ Updated at: ${new Date().toLocaleTimeString()}
                         `;
                         
