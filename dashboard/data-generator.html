@@ -646,10 +646,25 @@
                         progress.classList.add('hidden');
                         results.classList.remove('hidden');
                         
+                        const totalLoaded = data.total_loaded || 0;
+                        const datasets = data.datasets || {};
+                        let datasetInfo = '';
+                        
+                        // Show breakdown by dataset if available
+                        if (Object.keys(datasets).length > 0) {
+                            datasetInfo = '<br>📋 Breakdown:<br>';
+                            for (const [key, info] of Object.entries(datasets)) {
+                                if (info.success) {
+                                    datasetInfo += `  • ${key}: ${info.count || 0} records<br>`;
+                                }
+                            }
+                        }
+                        
                         document.getElementById('sanctionsResultsList').innerHTML = `
-                            ✅ Loaded ${data.total_loaded || 'unknown'} records<br>
+                            ✅ Loaded ${totalLoaded.toLocaleString()} records<br>
                             📊 Dataset: ${dataset}<br>
                             🔄 Status: ${data.success ? 'Success' : 'Partial'}<br>
+                            ${datasetInfo}
                             ⏱️ Updated at: ${new Date().toLocaleTimeString()}
                         `;
                         

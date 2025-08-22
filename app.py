@@ -404,12 +404,36 @@ def generate_demo_sanctions():
 def refresh_sanctions():
     """Refresh sanctions data from external sources"""
     try:
-        # Load sanctions data
-        results = sanctions_loader.refresh_sanctions_data()
+        if not sanctions_loader:
+            return jsonify({
+                'success': False,
+                'error': 'Sanctions loader not initialized'
+            }), 503
+        
+        # Get request parameters
+        params = request.get_json() or {}
+        dataset = params.get('dataset', 'all')
+        batch_size = params.get('batch_size', 1000)
+        
+        # Force refresh to get latest data from OpenSanctions
+        results = sanctions_loader.force_refresh_sanctions_data()
+        
+        # Extract summary information only (don't return full data)
+        datasets_summary = {}
+        if 'datasets' in results:
+            for key, dataset_info in results['datasets'].items():
+                datasets_summary[key] = {
+                    'success': dataset_info.get('success', False),
+                    'count': dataset_info.get('count', 0),
+                    'source': dataset_info.get('source', 'Unknown'),
+                    'date': dataset_info.get('date', 'Unknown')
+                }
         
         return jsonify({
-            'success': True,
-            'results': results,
+            'success': results.get('success', False),
+            'total_loaded': results.get('total_count', results.get('count', 0)),
+            'datasets': datasets_summary,
+            'source': results.get('source', 'OpenSanctions'),
             'timestamp': datetime.datetime.now().isoformat()
         })
         
@@ -419,33 +443,6 @@ def refresh_sanctions():
             'error': str(e)
         }), 500
 
-@app.route('/api/sanctions/refresh', methods=['POST'])
-def refresh_sanctions_manually():
-    """Manually refresh sanctions data from OpenSanctions daily datasets"""
-    try:
-        if not sanctions_loader:
-            return jsonify({
-                'success': False,
-                'error': 'Sanctions loader not initialized'
-            }), 503
-        
-        # Force refresh to get latest data
-        results = sanctions_loader.force_refresh_sanctions_data()
-        
-        return jsonify({
-            'success': results.get('success', False),
-            'count': results.get('total_count', results.get('count', 0)),
-            'source': results.get('source', 'Unknown'),
-            'datasets': results.get('datasets', {}),
-            'message': f"Loaded {results.get('total_count', results.get('count', 0))} sanctions records",
-            'timestamp': datetime.datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 @app.route('/api/sanctions/search', methods=['GET'])
 def search_sanctions():
