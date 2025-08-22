@@ -90,7 +90,18 @@ class SanctionsLoader:
                 if response.status_code == 200:
                     # Parse NDJSON format (newline-delimited JSON)
                     entities = []
-                    for line in response.text.strip().split('\n'):
+                    lines = response.text.strip().split('\n')
+                    
+                    # Apply batch limit if set (prefer per-dataset limit, then global limit)
+                    per_dataset_limit = getattr(self, '_dataset_batch_limit', None)
+                    global_batch_limit = getattr(self, '_batch_limit', None)
+                    
+                    effective_limit = per_dataset_limit or global_batch_limit
+                    if effective_limit:
+                        lines = lines[:effective_limit]
+                        print(f"📦 Applying batch limit: {effective_limit} records for {dataset_key}")
+                    
+                    for line in lines:
                         if line.strip():
                             try:
                                 entity = json.loads(line)
@@ -356,6 +367,18 @@ class SanctionsLoader:
         
         print("🔄 Loading OpenSanctions daily datasets...")
         
+        # Apply batch limit distribution if set
+        batch_limit = getattr(self, '_batch_limit', None)
+        if batch_limit:
+            # Distribute batch limit across datasets
+            dataset_count = len(self.datasets)
+            per_dataset_limit = max(1, batch_limit // dataset_count)
+            print(f"📦 Distributing batch limit: {per_dataset_limit} records per dataset")
+            
+            # Temporarily set per-dataset limit
+            original_limit = getattr(self, '_dataset_batch_limit', None)
+            self._dataset_batch_limit = per_dataset_limit
+        
         # Load each dataset
         for dataset_key in self.datasets.keys():
             dataset_result = self.load_daily_dataset(dataset_key)
@@ -365,6 +388,13 @@ class SanctionsLoader:
                 entities = dataset_result.get('entities', [])
                 all_entities.extend(entities)
                 total_loaded += dataset_result.get('count', 0)
+        
+        # Restore original per-dataset limit if it was set
+        if batch_limit:
+            if original_limit is not None:
+                self._dataset_batch_limit = original_limit
+            elif hasattr(self, '_dataset_batch_limit'):
+                delattr(self, '_dataset_batch_limit')
         
         # Store all entities in database if any were loaded
         if all_entities:

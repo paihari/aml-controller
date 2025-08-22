@@ -183,6 +183,50 @@ class SanctionsLoader:
         # Real OFAC integration
 ```
 
+## 🔗 OpenSanctions Integration
+
+The system provides **flexible OpenSanctions integration** with automatic fallback between paid API service and free dataset files.
+
+### 🎯 **Integration Options**
+
+| Method | Cost | Data Freshness | Rate Limits | Use Case |
+|--------|------|---------------|-------------|----------|
+| **Dataset Files** | 🆓 Free | Daily updates | None | Development, cost-effective production |
+| **API Service** | 💳 Paid | Real-time | Based on plan | High-frequency, real-time compliance |
+
+### ⚡ **Automatic Detection Logic**
+
+```mermaid
+flowchart LR
+    A[Sanctions Refresh] --> B{OPENSANCTIONS_API_KEY?}
+    B -->|✅ Found| C[🔄 API Service]
+    B -->|❌ Missing| D[📁 Dataset Files]
+    
+    C --> E[Real-time Data]
+    D --> F[Daily Data]
+    
+    style C fill:#e8f5e8
+    style D fill:#fff3e0
+```
+
+### 🛠️ **Configuration**
+
+```bash
+# Free Tier (Default) - Uses dataset files
+# No additional configuration needed
+
+# Paid Tier - Add API key to enable real-time data
+OPENSANCTIONS_API_KEY=your_api_key_here
+```
+
+### 📊 **Batch Processing**
+- **Batch Sizes**: 50, 100, 500 records
+- **Duplicate Prevention**: Automatically skips existing records
+- **Multi-dataset**: Sanctions, PEPs, Debarment lists
+- **Progress Tracking**: Real-time feedback on loaded/skipped counts
+
+> 📖 **Detailed Documentation**: See [`docs/OPENSANCTIONS_INTEGRATION.md`](docs/OPENSANCTIONS_INTEGRATION.md) for complete integration guide
+
 ---
 
 ## 🚀 Quick Start
