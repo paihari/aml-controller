@@ -125,6 +125,8 @@
             color: #2d2d2d;
             transition: all 0.2s ease;
             font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
         }
         
         .btn:hover {
@@ -466,7 +468,7 @@
         <!-- Controls -->
         <div class="controls">
             <button class="btn active" onclick="goToMainDashboard()">Main Dashboard</button>
-            <button class="btn" onclick="initializeData()">Generate Sample Data</button>
+            <a href="/dashboard/data-generator.html" class="btn">Generate Sample Data</a>
             <button class="btn" id="processBtn" onclick="processTransactions()">Process Pending Transactions</button>
             <button class="btn" onclick="exportData()">Export Results</button>
         </div>
