@@ -86,8 +86,8 @@ class TransactionGenerator:
             from supabase_sanctions import SupabaseSanctionsDB
             supabase_db = SupabaseSanctionsDB()
             
-            # Try different common sanctioned names
-            test_names = ['Vladimir Putin', 'Kim Jong Un', 'Bashar al-Assad', 'Alexander Lukashenko', 'Tehran']
+            # Try different names that exist in current sanctions database
+            test_names = ['Adrian Jose Velasquez Figueroa', 'Dmitriev Vyacheslav', 'Kulakov Vladimir', 'Tehran', 'Putin']
             sanctions = None
             
             for test_name in test_names:
@@ -98,6 +98,8 @@ class TransactionGenerator:
             if sanctions:
                 sanctioned_entity = random.choice(sanctions)
                 sanctioned_name = sanctioned_entity['name']
+                sanctioned_entity_id = sanctioned_entity.get('entity_id', f"UNKNOWN_{sanctioned_entity.get('id', 'NOID')}")
+                
                 # Parse countries from JSON if available
                 countries = sanctioned_entity.get('countries', '[]')
                 if isinstance(countries, str):
@@ -131,6 +133,7 @@ class TransactionGenerator:
             sanctioned_entity = random.choice(sanctioned_entities)
             sanctioned_name = sanctioned_entity['name']
             sanctioned_country = sanctioned_entity['country']
+            sanctioned_entity_id = f"FALLBACK_{sanctioned_entity['name'].replace(' ', '_').upper()}"
         
         return {
             'transaction_id': self.generate_transaction_id(),
@@ -145,7 +148,8 @@ class TransactionGenerator:
             'beneficiary_country': sanctioned_country,
             'origin_country': 'US',
             'purpose': random.choice(['Trade finance', 'Investment', 'Business payment']),
-            'risk_factors': ['sanctions_entity']
+            'risk_factors': ['sanctions_entity'],
+            'sanctions_entity_id': sanctioned_entity_id  # Add entity_id for enhanced alert evidence
         }
     
     def generate_structuring_pattern(self, count: int = 4) -> List[Dict]:

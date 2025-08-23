@@ -166,6 +166,9 @@ class DynamicAMLEngine:
             
             if confidence >= 0.8:  # High confidence match
                 print(f"🔍 DEBUG: High confidence match found! Creating alert...")
+                # Get detailed entity information for enhanced evidence
+                entity_details = self._get_sanctions_entity_details(match.get('entity_id'))
+                
                 alert = {
                     'alert_id': f"ALERT-{str(uuid.uuid4())[:8].upper()}",
                     'subject_id': transaction['transaction_id'],
@@ -180,6 +183,15 @@ class DynamicAMLEngine:
                         'match_confidence': confidence,
                         'match_type': 'exact' if confidence >= 0.95 else 'fuzzy',
                         'entity_id': match.get('entity_id'),
+                        'entity_type': match.get('schema', 'Unknown'),
+                        'countries': match.get('countries', []),
+                        'risk_level': match.get('risk_level', 'HIGH'),
+                        'data_sources': match.get('datasets', []),
+                        'is_active': match.get('is_active', True),
+                        'last_updated': match.get('last_seen'),
+                        'reason_flagged': entity_details.get('reason', 'Sanctions list match'),
+                        'sanctions_programs': entity_details.get('programs', []),
+                        'additional_identifiers': entity_details.get('identifiers', {}),
                         'country': match.get('country'),
                         'transaction_amount': transaction['amount'],
                         'transaction_id': transaction['transaction_id']
@@ -394,6 +406,57 @@ class DynamicAMLEngine:
             return overlap / total if total > 0 else 0.0
         
         return 0.0
+    
+    def _get_sanctions_entity_details(self, entity_id: str) -> Dict:
+        """Get detailed information about a sanctions entity for enhanced evidence"""
+        details = {
+            'reason': 'Sanctions list match',
+            'programs': [],
+            'identifiers': {}
+        }
+        
+        if not entity_id or not self.use_supabase or not self.supabase_db:
+            return details
+            
+        try:
+            # Get full entity details from Supabase
+            result = self.supabase_db.supabase.table('sanctions_entities')\
+                .select('*')\
+                .eq('entity_id', entity_id)\
+                .execute()
+            
+            if result.data:
+                entity = result.data[0]
+                
+                # Build detailed reason
+                entity_type = entity.get('entity_type', 'entity')
+                countries = entity.get('countries', [])
+                risk_level = entity.get('risk_level', 'HIGH')
+                data_sources = entity.get('data_sources', [])
+                
+                country_str = f" in {'/'.join(countries[:2])}" if countries else ""
+                sources_str = f" (sources: {', '.join(data_sources[:3])})" if data_sources else ""
+                
+                details['reason'] = f"{risk_level} risk {entity_type}{country_str} on sanctions watchlist{sources_str}"
+                details['programs'] = data_sources
+                
+                # Collect available identifiers
+                identifiers = {}
+                if entity.get('passport_numbers'):
+                    identifiers['passports'] = entity['passport_numbers']
+                if entity.get('national_ids'):
+                    identifiers['national_ids'] = entity['national_ids']
+                if entity.get('tax_numbers'):
+                    identifiers['tax_numbers'] = entity['tax_numbers']
+                if entity.get('registration_numbers'):
+                    identifiers['registration_numbers'] = entity['registration_numbers']
+                    
+                details['identifiers'] = identifiers
+                
+        except Exception as e:
+            print(f"⚠️ Error fetching entity details for {entity_id}: {e}")
+            
+        return details
     
     def _normalize_name(self, name: str) -> str:
         """Normalize name for comparison"""

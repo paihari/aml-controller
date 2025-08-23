@@ -3,570 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AML Alert Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <title>syntropAI Sentinel - AML Platform</title>
+    <meta http-equiv="refresh" content="0; url=/">
+    <link rel="icon" href="/images/Brand.svg" type="image/svg+xml">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #faf7f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             min-height: 100vh;
-            padding: 20px;
+            margin: 0;
+            color: #2d2d2d;
         }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
+        .redirect-message {
             text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #e8e1d6;
         }
-        
-        .header h1 {
-            color: #2c3e50;
-            font-size: 2.5rem;
+        .redirect-message img {
+            height: 60px;
+            margin-bottom: 20px;
+        }
+        .redirect-message h1 {
+            font-size: 24px;
             margin-bottom: 10px;
+            color: #2d2d2d;
         }
-        
-        .header p {
-            color: #7f8c8d;
-            font-size: 1.1rem;
-        }
-        
-        .header .meta {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #95a5a6;
-        }
-        
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+        .redirect-message p {
+            color: #666;
             margin-bottom: 20px;
         }
-        
-        .summary-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .summary-card {
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .summary-card.critical {
-            border-left: 5px solid #e74c3c;
-        }
-        
-        .summary-card.high {
-            border-left: 5px solid #f39c12;
-        }
-        
-        .summary-card.medium {
-            border-left: 5px solid #f1c40f;
-        }
-        
-        .summary-card.low {
-            border-left: 5px solid #27ae60;
-        }
-        
-        .summary-card h3 {
-            font-size: 2rem;
-            margin-bottom: 10px;
-            color: #2c3e50;
-        }
-        
-        .summary-card p {
-            color: #7f8c8d;
-            font-size: 0.9rem;
-        }
-        
-        .chart-container {
-            height: 400px;
-            position: relative;
-        }
-        
-        .alerts-table {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-        
-        .table-header {
-            background: #34495e;
+        .redirect-link {
+            display: inline-block;
+            background: #2563eb;
             color: white;
-            padding: 15px;
-            font-weight: bold;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ecf0f1;
-        }
-        
-        th {
-            background: #34495e;
-            color: white;
-            font-weight: 600;
-        }
-        
-        tr:hover {
-            background: rgba(52, 73, 94, 0.05);
-        }
-        
-        .risk-badge {
-            padding: 4px 8px;
-            border-radius: 15px;
-            color: white;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-        
-        .risk-critical {
-            background: #e74c3c;
-        }
-        
-        .risk-high {
-            background: #f39c12;
-        }
-        
-        .risk-medium {
-            background: #f1c40f;
-            color: #2c3e50;
-        }
-        
-        .typology-badge {
-            padding: 4px 8px;
-            border-radius: 5px;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }
-        
-        .sanctions {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .structuring {
-            background: #fff3e0;
-            color: #ef6c00;
-        }
-        
-        .geography {
-            background: #f3e5f5;
-            color: #7b1fa2;
-        }
-        
-        .refresh-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 1rem;
-            margin: 10px;
-            transition: all 0.3s ease;
-        }
-        
-        .refresh-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .status-indicator {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #27ae60;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(39, 174, 96, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); }
-        }
-        
-        .timestamp {
-            font-size: 0.8rem;
-            color: #95a5a6;
-            font-style: italic;
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            color: rgba(255, 255, 255, 0.8);
-        }
-        
-        .footer a {
-            color: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 6px;
             text-decoration: none;
+            transition: background 0.2s;
         }
-        
-        .footer a:hover {
-            text-decoration: underline;
-        }
-        
-        @media (max-width: 768px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .summary-cards {
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            table {
-                font-size: 0.8rem;
-            }
+        .redirect-link:hover {
+            background: #1d4ed8;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="status-indicator"></div>
-            <h1>🛡️ AML Alert Dashboard</h1>
-            <p>Real-time Anti-Money Laundering Detection Results</p>
-            <div class="meta">
-                Powered by Azure • Databricks • AI/ML Detection Engine
-            </div>
-            <button class="refresh-btn" onclick="loadData()">🔄 Refresh Data</button>
-        </div>
-        
-        <div class="summary-cards" id="summaryCards">
-            <!-- Summary cards will be populated by JavaScript -->
-        </div>
-        
-        <div class="dashboard-grid">
-            <div class="card">
-                <h3>Alert Distribution by Risk Level</h3>
-                <div class="chart-container">
-                    <canvas id="riskChart"></canvas>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>Detection Typologies</h3>
-                <div class="chart-container">
-                    <canvas id="typologyChart"></canvas>
-                </div>
-            </div>
-        </div>
-        
-        <div class="alerts-table">
-            <div class="table-header">
-                <h3>🚨 Active AML Alerts</h3>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Alert ID</th>
-                        <th>Subject</th>
-                        <th>Typology</th>
-                        <th>Risk Score</th>
-                        <th>Evidence</th>
-                        <th>Created</th>
-                    </tr>
-                </thead>
-                <tbody id="alertsTableBody">
-                    <!-- Alert data will be populated by JavaScript -->
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="footer">
-            <p>AML Agentic Platform • End-to-End Test Results • 
-            <a href="https://github.com/your-repo/aml-platform" target="_blank">View Source</a></p>
-            <p><small>Last updated: <span id="lastUpdated"></span></small></p>
-        </div>
+    <div class="redirect-message">
+        <img src="/images/Brand.svg" alt="syntropAI Sentinel">
+        <h1>syntropAI Sentinel</h1>
+        <p>Redirecting to the AML Detection Platform...</p>
+        <p>If you're not redirected automatically, <a href="/" class="redirect-link">click here</a></p>
     </div>
-
+    
     <script>
-        let alertsData = [];
-        let riskChart = null;
-        let typologyChart = null;
-        
-        // Production alert data from our AML platform test
-        const alertsData_prod = [
-            {
-                "alert_id": "ALERT-0001",
-                "subject_id": "PARTY-004",
-                "typology": "R1_SANCTIONS_MATCH",
-                "risk_score": 0.99,
-                "evidence": {
-                    "source": "OFAC",
-                    "program": "SANCTIONS",
-                    "party_name": "Vladimir Petrov",
-                    "watchlist_name": "Vladimir Petrov",
-                    "match_type": "name"
-                },
-                "created_ts": "2025-08-19T12:53:10.341735"
-            },
-            {
-                "alert_id": "ALERT-0002",
-                "subject_id": "ACC-12345",
-                "typology": "R2_STRUCTURING",
-                "risk_score": 0.8,
-                "evidence": {
-                    "transaction_count": 4,
-                    "total_amount": 3560.0,
-                    "date": "2024-01-15",
-                    "pattern": "multiple_small_same_day"
-                },
-                "created_ts": "2025-08-19T12:53:10.341788"
-            },
-            {
-                "alert_id": "ALERT-0003",
-                "subject_id": "ACC-56789",
-                "typology": "R3_HIGH_RISK_CORRIDOR",
-                "risk_score": 0.7,
-                "evidence": {
-                    "origin_country": "US",
-                    "beneficiary_country": "IR",
-                    "transaction_id": "TXN-006",
-                    "amount": 75000.0
-                },
-                "created_ts": "2025-08-19T12:53:10.341795"
+        // Fallback redirect in case meta refresh doesn't work
+        setTimeout(() => {
+            if (window.location.pathname === '/index.html') {
+                window.location.href = '/';
             }
-        ];
-        
-        function getRiskLevel(score) {
-            if (score >= 0.9) return 'critical';
-            if (score >= 0.8) return 'high';
-            if (score >= 0.6) return 'medium';
-            return 'low';
-        }
-        
-        function getRiskBadgeClass(score) {
-            if (score >= 0.9) return 'risk-critical';
-            if (score >= 0.8) return 'risk-high';
-            if (score >= 0.6) return 'risk-medium';
-            return 'risk-low';
-        }
-        
-        function getTypologyClass(typology) {
-            if (typology.includes('SANCTIONS')) return 'sanctions';
-            if (typology.includes('STRUCTURING')) return 'structuring';
-            if (typology.includes('CORRIDOR')) return 'geography';
-            return 'sanctions';
-        }
-        
-        function getTypologyName(typology) {
-            if (typology.includes('SANCTIONS')) return 'Sanctions Match';
-            if (typology.includes('STRUCTURING')) return 'Structuring';
-            if (typology.includes('CORRIDOR')) return 'High-Risk Geography';
-            return typology;
-        }
-        
-        function formatEvidence(evidence) {
-            if (evidence.party_name) {
-                return `${evidence.source} match: ${evidence.party_name}`;
-            }
-            if (evidence.transaction_count) {
-                return `${evidence.transaction_count} txns, $${evidence.total_amount.toLocaleString()}`;
-            }
-            if (evidence.origin_country) {
-                return `${evidence.origin_country} → ${evidence.beneficiary_country} ($${evidence.amount.toLocaleString()})`;
-            }
-            return JSON.stringify(evidence);
-        }
-        
-        function updateSummaryCards() {
-            const summaryCards = document.getElementById('summaryCards');
-            
-            const totalAlerts = alertsData.length;
-            const criticalAlerts = alertsData.filter(a => a.risk_score >= 0.9).length;
-            const highAlerts = alertsData.filter(a => a.risk_score >= 0.8 && a.risk_score < 0.9).length;
-            const avgRiskScore = alertsData.reduce((sum, a) => sum + a.risk_score, 0) / totalAlerts;
-            
-            summaryCards.innerHTML = `
-                <div class="card summary-card critical">
-                    <h3>${totalAlerts}</h3>
-                    <p>Total Active Alerts</p>
-                </div>
-                <div class="card summary-card critical">
-                    <h3>${criticalAlerts}</h3>
-                    <p>Critical Risk (≥90%)</p>
-                </div>
-                <div class="card summary-card high">
-                    <h3>${highAlerts}</h3>
-                    <p>High Risk (80-89%)</p>
-                </div>
-                <div class="card summary-card medium">
-                    <h3>${(avgRiskScore * 100).toFixed(1)}%</h3>
-                    <p>Average Risk Score</p>
-                </div>
-            `;
-        }
-        
-        function updateAlertsTable() {
-            const tbody = document.getElementById('alertsTableBody');
-            
-            tbody.innerHTML = alertsData.map(alert => `
-                <tr>
-                    <td><strong>${alert.alert_id}</strong></td>
-                    <td>${alert.subject_id}</td>
-                    <td><span class="typology-badge ${getTypologyClass(alert.typology)}">${getTypologyName(alert.typology)}</span></td>
-                    <td><span class="risk-badge ${getRiskBadgeClass(alert.risk_score)}">${(alert.risk_score * 100).toFixed(0)}%</span></td>
-                    <td>${formatEvidence(alert.evidence)}</td>
-                    <td class="timestamp">${new Date(alert.created_ts).toLocaleString()}</td>
-                </tr>
-            `).join('');
-        }
-        
-        function updateCharts() {
-            // Risk Level Distribution Chart
-            const riskCounts = {
-                'Critical (≥90%)': alertsData.filter(a => a.risk_score >= 0.9).length,
-                'High (80-89%)': alertsData.filter(a => a.risk_score >= 0.8 && a.risk_score < 0.9).length,
-                'Medium (60-79%)': alertsData.filter(a => a.risk_score >= 0.6 && a.risk_score < 0.8).length,
-                'Low (<60%)': alertsData.filter(a => a.risk_score < 0.6).length
-            };
-            
-            if (riskChart) {
-                riskChart.destroy();
-            }
-            
-            const riskCtx = document.getElementById('riskChart').getContext('2d');
-            riskChart = new Chart(riskCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(riskCounts),
-                    datasets: [{
-                        data: Object.values(riskCounts),
-                        backgroundColor: ['#e74c3c', '#f39c12', '#f1c40f', '#27ae60'],
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        }
-                    }
-                }
-            });
-            
-            // Typology Distribution Chart
-            const typologyCounts = {};
-            alertsData.forEach(alert => {
-                const typeName = getTypologyName(alert.typology);
-                typologyCounts[typeName] = (typologyCounts[typeName] || 0) + 1;
-            });
-            
-            if (typologyChart) {
-                typologyChart.destroy();
-            }
-            
-            const typologyCtx = document.getElementById('typologyChart').getContext('2d');
-            typologyChart = new Chart(typologyCtx, {
-                type: 'bar',
-                data: {
-                    labels: Object.keys(typologyCounts),
-                    datasets: [{
-                        label: 'Alert Count',
-                        data: Object.values(typologyCounts),
-                        backgroundColor: ['#3498db', '#9b59b6', '#e67e22'],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                stepSize: 1
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function loadData() {
-            // Use the production alert data
-            alertsData = alertsData_prod;
-            updateDashboard();
-            
-            // Update last updated timestamp
-            document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-        }
-        
-        function updateDashboard() {
-            updateSummaryCards();
-            updateAlertsTable();
-            updateCharts();
-        }
-        
-        // Initialize dashboard
-        document.addEventListener('DOMContentLoaded', function() {
-            loadData();
-            
-            // Auto-refresh every 30 seconds (for demo purposes)
-            setInterval(() => {
-                // In production, this would fetch fresh data from API
-                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-            }, 30000);
-        });
+        }, 1000);
     </script>
 </body>
 </html>

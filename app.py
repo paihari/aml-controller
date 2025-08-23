@@ -197,7 +197,7 @@ def home():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>syntropAI - AML Detection Platform</title>
+        <title>syntropAI Sentinel - AML Detection Platform</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
@@ -208,15 +208,12 @@ def home():
                 padding: 40px 20px;
             }
             .container { max-width: 800px; margin: 0 auto; text-align: center; }
-            .brand { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 40px; }
+            .brand { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; margin-bottom: 40px; }
             .brand img { 
-                height: 120px; 
-                border: 2px solid #e8e1d6; 
-                border-radius: 12px; 
-                padding: 16px; 
-                background: #ffffff;
+                height: 160px; 
+                border: 2px solid #000000;
             }
-            .brand-text { font-size: 32px; font-weight: 600; color: #2d2d2d; }
+            .brand-text { font-size: 36px; font-weight: 600; color: #2d2d2d; }
             .subtitle { font-size: 18px; color: #666; margin-bottom: 40px; }
             .nav-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px; }
             .nav-card { 
@@ -237,7 +234,8 @@ def home():
     <body>
         <div class="container">
             <div class="brand">
-                <img src="/images/brand.png" alt="syntropAI" />
+                <img src="/images/Brand.svg" alt="syntropAI Sentinel" />
+                <div class="brand-text">syntropAI Sentinel</div>
             </div>
             <div class="subtitle">Real-time Anti-Money Laundering Detection Platform</div>
             
@@ -246,13 +244,13 @@ def home():
                     <div class="nav-title">📊 AML Dashboard</div>
                     <div class="nav-desc">Minimalist real-time dashboard</div>
                 </a>
-                <a href="/dashboard/dynamic.html" class="nav-card">
-                    <div class="nav-title">🔧 Dynamic Dashboard</div>
-                    <div class="nav-desc">Feature-rich dashboard</div>
+                <a href="/dashboard/data-generator.html" class="nav-card">
+                    <div class="nav-title">⚡ Generate Data</div>
+                    <div class="nav-desc">Create sample transactions & process data</div>
                 </a>
-                <a href="/api/health" class="nav-card">
-                    <div class="nav-title">💚 Health Check</div>
-                    <div class="nav-desc">System status and version</div>
+                <a href="/dashboard/search.html" class="nav-card">
+                    <div class="nav-title">🔍 Search</div>
+                    <div class="nav-desc">Search alerts, transactions & sanctions</div>
                 </a>
                 <a href="/api/statistics" class="nav-card">
                     <div class="nav-title">📈 Statistics</div>
@@ -262,9 +260,9 @@ def home():
                     <div class="nav-title">🚨 Alerts</div>
                     <div class="nav-desc">Active AML alerts</div>
                 </a>
-                <a href="/api/initialize" class="nav-card">
-                    <div class="nav-title">🎲 Generate Data</div>
-                    <div class="nav-desc">Create sample data</div>
+                <a href="/api/health" class="nav-card">
+                    <div class="nav-title">💚 Health Check</div>
+                    <div class="nav-desc">System status and version</div>
                 </a>
             </div>
             
@@ -337,12 +335,1053 @@ except Exception as e:
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
+    """Comprehensive health check endpoint with API status groupings"""
+    health_status = {
+        'overall_status': 'healthy',
         'timestamp': datetime.datetime.now().isoformat(),
-        'version': '1.0.0'
-    })
+        'version': '2.0.0',
+        'api_groups': {}
+    }
+    
+    try:
+        # Core System APIs
+        core_apis = {}
+        try:
+            # Test database connection
+            if aml_engine and aml_engine.db:
+                stats = aml_engine.get_alert_statistics()
+                core_apis['statistics'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/statistics',
+                    'last_result': f"Total transactions: {stats.get('total_transactions', 0)}, Alerts: {stats.get('total_alerts', 0)}"
+                }
+            else:
+                core_apis['statistics'] = {'status': 'error', 'endpoint': '/api/statistics', 'error': 'Database not available'}
+                
+            # Test AML engine
+            if aml_engine:
+                core_apis['aml_engine'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/transactions/process',
+                    'last_result': f"Supabase: {'enabled' if aml_engine.use_supabase else 'disabled'}"
+                }
+            else:
+                core_apis['aml_engine'] = {'status': 'error', 'endpoint': '/api/transactions/process', 'error': 'AML engine not initialized'}
+        except Exception as e:
+            core_apis['core_system'] = {'status': 'error', 'error': str(e)}
+            
+        health_status['api_groups']['Core System'] = core_apis
+        
+        # Transaction Management APIs
+        transaction_apis = {}
+        try:
+            if db:
+                # Get recent transaction count
+                recent_count = db.get_statistics().get('total_transactions', 0)
+                transaction_apis['get_transactions'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/transactions',
+                    'last_result': f"Database contains {recent_count} transactions"
+                }
+                transaction_apis['create_transaction'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/transactions (POST)',
+                    'last_result': 'Ready to accept new transactions'
+                }
+                transaction_apis['batch_processing'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/transactions/batch',
+                    'last_result': 'Batch processing available'
+                }
+                transaction_apis['process_pending'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/transactions/process',
+                    'last_result': 'AML processing ready'
+                }
+            else:
+                transaction_apis['database'] = {'status': 'error', 'error': 'Database not available'}
+        except Exception as e:
+            transaction_apis['transaction_system'] = {'status': 'error', 'error': str(e)}
+            
+        health_status['api_groups']['Transaction Management'] = transaction_apis
+        
+        # Data Generation APIs
+        generation_apis = {}
+        try:
+            if transaction_generator:
+                generation_apis['generate_transactions'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/generate/transactions',
+                    'last_result': 'Transaction generator ready'
+                }
+                generation_apis['demo_sanctions'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/generate/demo-sanctions',
+                    'last_result': 'Demo sanctions data ready'
+                }
+                generation_apis['process_workflow'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/generate/process',
+                    'last_result': 'End-to-end workflow available'
+                }
+            else:
+                generation_apis['generator'] = {'status': 'error', 'error': 'Transaction generator not available'}
+        except Exception as e:
+            generation_apis['generation_system'] = {'status': 'error', 'error': str(e)}
+            
+        health_status['api_groups']['Data Generation'] = generation_apis
+        
+        # Sanctions & Compliance APIs
+        sanctions_apis = {}
+        try:
+            if aml_engine and aml_engine.use_supabase and aml_engine.supabase_db:
+                # Test sanctions database
+                sanctions_count = aml_engine.supabase_db.get_sanctions_count()
+                total_sanctions = sanctions_count.get('total_sanctions', 0) if isinstance(sanctions_count, dict) else sanctions_count
+                sanctions_apis['sanctions_status'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/sanctions/status',
+                    'last_result': f"Supabase contains {total_sanctions} sanctions records"
+                }
+                sanctions_apis['sanctions_search'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/sanctions/search',
+                    'last_result': 'Sanctions search ready'
+                }
+                sanctions_apis['sanctions_refresh'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/sanctions/refresh',
+                    'last_result': 'Sanctions refresh available'
+                }
+            else:
+                sanctions_apis['supabase_sanctions'] = {
+                    'status': 'warning',
+                    'endpoint': '/api/sanctions/*',
+                    'last_result': 'Using local database fallback'
+                }
+        except Exception as e:
+            sanctions_apis['sanctions_system'] = {'status': 'error', 'error': str(e)}
+            
+        health_status['api_groups']['Sanctions & Compliance'] = sanctions_apis
+        
+        # Dashboard & Alerts APIs
+        dashboard_apis = {}
+        try:
+            if aml_engine:
+                alert_stats = aml_engine.get_alert_statistics()
+                dashboard_apis['dashboard_data'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/dashboard/data',
+                    'last_result': f"Dashboard ready - {alert_stats.get('total_alerts', 0)} alerts"
+                }
+                dashboard_apis['get_alerts'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/alerts',
+                    'last_result': f"Alert system operational"
+                }
+                dashboard_apis['update_alerts'] = {
+                    'status': 'healthy',
+                    'endpoint': '/api/alerts/<id>/update',
+                    'last_result': 'Alert updates ready'
+                }
+        except Exception as e:
+            dashboard_apis['dashboard_system'] = {'status': 'error', 'error': str(e)}
+            
+        health_status['api_groups']['Dashboard & Alerts'] = dashboard_apis
+        
+        # Determine overall status
+        all_statuses = []
+        for group in health_status['api_groups'].values():
+            for api in group.values():
+                all_statuses.append(api.get('status', 'unknown'))
+        
+        if 'error' in all_statuses:
+            health_status['overall_status'] = 'degraded'
+        elif 'warning' in all_statuses:
+            health_status['overall_status'] = 'warning'
+        else:
+            health_status['overall_status'] = 'healthy'
+            
+        # Add summary
+        health_status['summary'] = {
+            'total_api_groups': len(health_status['api_groups']),
+            'total_apis_checked': sum(len(group) for group in health_status['api_groups'].values()),
+            'healthy_apis': sum(1 for group in health_status['api_groups'].values() 
+                              for api in group.values() if api.get('status') == 'healthy'),
+            'warning_apis': sum(1 for group in health_status['api_groups'].values() 
+                               for api in group.values() if api.get('status') == 'warning'),
+            'error_apis': sum(1 for group in health_status['api_groups'].values() 
+                             for api in group.values() if api.get('status') == 'error')
+        }
+        
+    except Exception as e:
+        health_status['overall_status'] = 'error'
+        health_status['error'] = f"Health check failed: {str(e)}"
+    
+    # Set HTTP status code based on health
+    status_code = 200
+    if health_status['overall_status'] == 'error':
+        status_code = 503
+    elif health_status['overall_status'] == 'degraded':
+        status_code = 206
+    elif health_status['overall_status'] == 'warning':
+        status_code = 200
+        
+    # Return HTML if requested via browser
+    if request.headers.get('Accept', '').find('text/html') >= 0:
+        return render_health_html(health_status), status_code
+    else:
+        return jsonify(health_status), status_code
+
+def render_health_html(health_data):
+    """Render health check data as HTML"""
+    overall_status = health_data.get('overall_status', 'unknown')
+    status_color = {
+        'healthy': '#22c55e',
+        'warning': '#f59e0b', 
+        'degraded': '#ef4444',
+        'error': '#ef4444'
+    }.get(overall_status, '#6b7280')
+    
+    status_icon = {
+        'healthy': '✅',
+        'warning': '⚠️',
+        'degraded': '🔴', 
+        'error': '❌'
+    }.get(overall_status, '❓')
+    
+    html = f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>AML System Health Check</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background-color: #faf7f2; 
+                color: #2d2d2d; 
+                line-height: 1.6;
+                min-height: 100vh;
+            }}
+            .container {{ 
+                max-width: 1200px; 
+                margin: 0 auto; 
+                padding: 24px;
+                position: relative;
+            }}
+            
+            /* Uniform Header Component */
+            .header {{ 
+                display: flex; 
+                align-items: center; 
+                justify-content: flex-end; 
+                padding: 0; 
+                border-bottom: none; 
+                margin-bottom: 0; 
+                position: absolute; 
+                top: 24px; 
+                right: 24px; 
+            }}
+            
+            .header-left {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 24px; 
+            }}
+            
+            .brand {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 15px; 
+            }}
+            
+            .brand img {{ 
+                height: 60px; 
+                width: auto; 
+                border: 2px solid #000000;
+            }}
+            
+            .brand-text {{ 
+                font-size: 24px; 
+                font-weight: 600; 
+                color: #2d2d2d; 
+            }}
+            
+            .system-status {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 8px; 
+                font-size: 14px; 
+                color: #666;
+            }}
+            
+            .status-dot {{
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #22c55e;
+            }}
+            
+            .status-dot.error {{
+                background: #ef4444;
+            }}
+            
+            /* Page Title Section */
+            .page-title {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px; 
+                margin: 20px 0 40px 0; 
+                padding-bottom: 24px; 
+                border-bottom: 1px solid #e8e1d6;
+            }}
+            
+            .page-title img {{ 
+                height: 80px; 
+                width: auto; 
+                border: 2px solid #000000;
+            }}
+            
+            .page-title-content {{ 
+                flex: 1; 
+            }}
+            
+            .page-title h1 {{ 
+                font-size: 2.2rem; 
+                font-weight: 600; 
+                color: #2d2d2d; 
+                margin-bottom: 8px; 
+            }}
+            
+            .page-title p {{ 
+                font-size: 1rem; 
+                color: #666; 
+            }}
+            .summary {{ 
+                background: white; 
+                border-radius: 12px; 
+                padding: 24px; 
+                margin-bottom: 30px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            }}
+            .summary-grid {{ 
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+                gap: 20px; 
+            }}
+            .summary-item {{ text-align: center; }}
+            .summary-number {{ font-size: 2rem; font-weight: 700; color: #2d2d2d; }}
+            .summary-label {{ color: #666; font-size: 0.9rem; }}
+            .api-group {{ 
+                background: white; 
+                border-radius: 12px; 
+                padding: 24px; 
+                margin-bottom: 20px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                border: 1px solid #e8e1d6;
+            }}
+            .api-group h3 {{ 
+                font-size: 1.3rem; 
+                margin-bottom: 20px; 
+                color: #2d2d2d;
+                border-bottom: 2px solid #e5e5e5;
+                padding-bottom: 10px;
+            }}
+            .api-item {{ 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center; 
+                padding: 12px 0; 
+                border-bottom: 1px solid #f3f3f3;
+            }}
+            .api-item:last-child {{ border-bottom: none; }}
+            .api-info {{ flex: 1; }}
+            .api-name {{ font-weight: 600; color: #2d2d2d; }}
+            .api-endpoint {{ font-size: 0.85rem; color: #666; font-family: monospace; }}
+            .api-result {{ font-size: 0.9rem; color: #444; margin-top: 4px; }}
+            .status-indicator {{ 
+                width: 12px; 
+                height: 12px; 
+                border-radius: 50%; 
+                margin-right: 8px;
+            }}
+            .status-healthy {{ background: #22c55e; }}
+            .status-warning {{ background: #f59e0b; }}
+            .status-error {{ background: #ef4444; }}
+            .timestamp {{ text-align: center; color: #666; font-size: 0.9rem; margin-top: 30px; }}
+            .refresh-btn {{ 
+                background: #2563eb; 
+                color: white; 
+                border: none; 
+                padding: 12px 24px; 
+                border-radius: 8px; 
+                cursor: pointer; 
+                font-size: 1rem;
+                margin: 0 5px;
+                display: inline-block;
+            }}
+            .refresh-btn:hover {{ background: #1d4ed8; }}
+            .breadcrumb {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 8px; 
+                font-size: 0.9rem; 
+                color: #666;
+            }}
+            .breadcrumb a {{ 
+                color: #374151; 
+                text-decoration: none; 
+                font-weight: 500; 
+                transition: color 0.2s;
+            }}
+            .breadcrumb a:hover {{ 
+                color: #2563eb;
+            }}
+            .breadcrumb .separator {{ 
+                color: #9ca3af; 
+                font-weight: 400;
+            }}
+            .breadcrumb .current {{ 
+                color: #2563eb; 
+                font-weight: 600;
+            }}
+            .test-btn {{ 
+                background: #06b6d4; 
+                color: white; 
+                border: none; 
+                padding: 6px 12px; 
+                border-radius: 6px; 
+                cursor: pointer; 
+                font-size: 0.85rem;
+                margin-left: 12px;
+                transition: all 0.2s;
+            }}
+            .test-btn:hover {{ background: #0891b2; }}
+            .test-btn:disabled {{ background: #94a3b8; cursor: not-allowed; }}
+            .test-result {{ 
+                margin-top: 8px; 
+                padding: 8px 12px; 
+                border-radius: 6px; 
+                font-size: 0.85rem;
+                display: none;
+            }}
+            .test-result.success {{ background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }}
+            .test-result.error {{ background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }}
+            .test-result.warning {{ background: #fefbeb; color: #d97706; border: 1px solid #fed7aa; }}
+            .spinner {{ 
+                display: inline-block; 
+                width: 12px; 
+                height: 12px; 
+                border: 2px solid #f3f3f3; 
+                border-top: 2px solid #06b6d4; 
+                border-radius: 50%; 
+                animation: spin 1s linear infinite; 
+            }}
+            @keyframes spin {{ 
+                0% {{ transform: rotate(0deg); }} 
+                100% {{ transform: rotate(360deg); }} 
+            }}
+            
+            /* Responsive design */
+            @media (max-width: 768px) {{
+                .container {{
+                    padding: 15px;
+                }}
+                
+                .header {{
+                    flex-direction: column;
+                    gap: 20px;
+                    text-align: center;
+                }}
+                
+                .summary-grid {{
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="page-title">
+                <img src="/images/Brand.svg" alt="syntropAI" />
+                <div class="page-title-content">
+                    <h1>{status_icon} AML System Health Check</h1>
+                    <p>Comprehensive API Status & Service Testing</p>
+                </div>
+            </div>
+            
+            <header class="header">
+                <div class="header-left">
+                </div>
+                <div class="system-status">
+                    <div class="status-dot{' error' if overall_status in ['error', 'degraded'] else ''}" id="statusDot"></div>
+                    <span id="statusText">System Online</span>
+                    <div style="font-size: 12px; color: #666; margin-top: 4px;" id="serverUptime">Uptime: -</div>
+                </div>
+            </header>
+            
+            <nav class="breadcrumb" style="margin-bottom: 40px;">
+                <a href="/">Home</a>
+                <span class="separator">/</span>
+                <span class="current">System Health</span>
+            </nav>
+            
+            <div class="summary">
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="summary-number">{health_data.get('summary', {}).get('total_api_groups', 0)}</div>
+                        <div class="summary-label">API Groups</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number" style="color: #22c55e;">{health_data.get('summary', {}).get('healthy_apis', 0)}</div>
+                        <div class="summary-label">Healthy APIs</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number" style="color: #f59e0b;">{health_data.get('summary', {}).get('warning_apis', 0)}</div>
+                        <div class="summary-label">Warning APIs</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number" style="color: #ef4444;">{health_data.get('summary', {}).get('error_apis', 0)}</div>
+                        <div class="summary-label">Error APIs</div>
+                    </div>
+                </div>
+            </div>
+    '''
+    
+    # Add API groups
+    for group_name, apis in health_data.get('api_groups', {}).items():
+        html += f'''
+            <div class="api-group">
+                <h3>{group_name}</h3>
+        '''
+        
+        for api_name, api_info in apis.items():
+            status = api_info.get('status', 'unknown')
+            endpoint = api_info.get('endpoint', 'N/A')
+            result = api_info.get('last_result', api_info.get('error', 'No information'))
+            
+            # Create unique ID for this API test
+            test_id = f"{group_name.lower().replace(' ', '_').replace('&', '')}_{api_name}"
+            
+            html += f'''
+                <div class="api-item">
+                    <div class="api-info">
+                        <div class="api-name">
+                            <span class="status-indicator status-{status}"></span>
+                            {api_name.replace('_', ' ').title()}
+                            <button class="test-btn" onclick="testService('{test_id}', '{endpoint}')" id="btn_{test_id}">
+                                🧪 Test
+                            </button>
+                        </div>
+                        <div class="api-endpoint">{endpoint}</div>
+                        <div class="api-result">{result}</div>
+                        <div class="test-result" id="result_{test_id}"></div>
+                    </div>
+                </div>
+            '''
+        
+        html += '</div>'
+    
+    html += f'''
+            <div style="text-align: center; margin: 30px 0;">
+                <button class="refresh-btn" onclick="window.location.reload()">🔄 Refresh Health Check</button>
+                <button class="refresh-btn" onclick="testAllServices()" style="background: #059669; margin-left: 10px;">🧪 Test All Services</button>
+            </div>
+            
+            <div class="timestamp">
+                Last updated: {health_data.get('timestamp', 'Unknown')}
+            </div>
+        </div>
+        
+        <script>
+            async function testService(testId, endpoint) {{
+                const button = document.getElementById('btn_' + testId);
+                const resultDiv = document.getElementById('result_' + testId);
+                
+                // Show loading state
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner"></span> Testing...';
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'test-result';
+                resultDiv.textContent = 'Testing service...';
+                
+                try {{
+                    const response = await fetch('/api/health/test-service', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                        }},
+                        body: JSON.stringify({{ endpoint: endpoint }})
+                    }});
+                    
+                    const result = await response.json();
+                    
+                    // Display result
+                    if (result.success) {{
+                        resultDiv.className = 'test-result success';
+                        resultDiv.innerHTML = '✅ <strong>Success:</strong> ' + result.message;
+                        if (result.data) {{
+                            resultDiv.innerHTML += '<br><small>' + result.data + '</small>';
+                        }}
+                    }} else {{
+                        resultDiv.className = 'test-result error';
+                        resultDiv.innerHTML = '❌ <strong>Error:</strong> ' + result.error;
+                    }}
+                }} catch (error) {{
+                    resultDiv.className = 'test-result error';
+                    resultDiv.innerHTML = '❌ <strong>Network Error:</strong> ' + error.message;
+                }}
+                
+                // Reset button
+                button.disabled = false;
+                button.innerHTML = '🧪 Test';
+            }}
+            
+            function testAllServices() {{
+                const buttons = document.querySelectorAll('.test-btn');
+                buttons.forEach((button, index) => {{
+                    setTimeout(() => {{
+                        button.click();
+                    }}, index * 500); // Stagger tests by 500ms
+                }});
+            }}
+            
+            // Uptime functionality
+            const serverStartTime = Date.now();
+            
+            function formatUptime(milliseconds) {{
+                const seconds = Math.floor(milliseconds / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const hours = Math.floor(minutes / 60);
+                const days = Math.floor(hours / 24);
+                
+                if (days > 0) return `${{days}}d ${{hours % 24}}h ${{minutes % 60}}m`;
+                if (hours > 0) return `${{hours}}h ${{minutes % 60}}m`;
+                if (minutes > 0) return `${{minutes}}m ${{seconds % 60}}s`;
+                return `${{seconds}}s`;
+            }}
+            
+            function updateServerUptime() {{
+                const uptime = Date.now() - serverStartTime;
+                const uptimeString = formatUptime(uptime);
+                const uptimeElement = document.getElementById('serverUptime');
+                if (uptimeElement) {{
+                    uptimeElement.textContent = `Uptime: ${{uptimeString}}`;
+                }}
+            }}
+            
+            // Update uptime every second
+            setInterval(updateServerUptime, 1000);
+            
+            // Initialize uptime on page load
+            updateServerUptime();
+        </script>
+    </body>
+    </html>
+    '''
+    
+    return html
+
+@app.route('/api/health/test-service', methods=['POST'])
+def test_individual_service():
+    """Test individual service endpoint"""
+    try:
+        data = request.get_json()
+        endpoint = data.get('endpoint', '')
+        
+        if not endpoint:
+            return jsonify({
+                'success': False,
+                'error': 'Endpoint parameter required'
+            }), 400
+        
+        # Test the specific endpoint
+        result = test_service_endpoint(endpoint)
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Test failed: {str(e)}'
+        }), 500
+
+@app.route('/api/search', methods=['GET'])
+def search_data():
+    """Modern search across alerts, transactions, and sanctions with real data retrieval"""
+    try:
+        query = request.args.get('q', '').strip()
+        search_type = request.args.get('type', 'all')
+        date_range = request.args.get('date_range', 'all')
+        status_filter = request.args.get('status', 'all')
+        risk_filter = request.args.get('risk', 'all')
+        limit = min(int(request.args.get('limit', 50)), 100)  # Max 100 results
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Search query required'
+            }), 400
+        
+        results = []
+        query_lower = query.lower()
+        
+        # Search alerts with real data
+        if search_type in ['all', 'alerts']:
+            try:
+                # Get alerts from Supabase database
+                if db and hasattr(db, 'get_active_alerts'):
+                    alerts_data = db.get_active_alerts(limit=200)
+                elif aml_engine and hasattr(aml_engine, 'get_alerts'):
+                    alerts_data = aml_engine.get_alerts()
+                else:
+                    alerts_data = []
+                
+                for alert in alerts_data:
+                    # Create searchable text from all alert fields
+                    searchable_fields = [
+                        str(alert.get('alert_id', '')),
+                        str(alert.get('transaction_id', '')),
+                        str(alert.get('alert_type', '')),
+                        str(alert.get('description', '')),
+                        str(alert.get('sender_name', '')),
+                        str(alert.get('receiver_name', '')),
+                        str(alert.get('sender_country', '')),
+                        str(alert.get('receiver_country', '')),
+                        str(alert.get('risk_level', ''))
+                    ]
+                    searchable_text = ' '.join(searchable_fields).lower()
+                    
+                    # Check if query matches any field
+                    if query_lower in searchable_text:
+                        # Apply filters
+                        if risk_filter != 'all' and alert.get('risk_level', '').lower() != risk_filter:
+                            continue
+                        if status_filter != 'all' and alert.get('status', '').lower() != status_filter:
+                            continue
+                        
+                        # Format amount properly
+                        amount = alert.get('amount', 0)
+                        try:
+                            amount = float(amount) if amount else 0
+                        except (ValueError, TypeError):
+                            amount = 0
+                        
+                        results.append({
+                            'type': 'alert',
+                            'title': f"Alert {alert.get('alert_id', 'N/A')} - {alert.get('alert_type', 'AML Alert')}",
+                            'details': f"Transaction: {alert.get('transaction_id', 'N/A')} | Risk: {alert.get('risk_level', 'Medium')} | Amount: ${amount:,.2f} | Status: {alert.get('status', 'Active')}",
+                            'timestamp': alert.get('created_date', alert.get('timestamp', '')),
+                            'metadata': {
+                                'sender': f"{alert.get('sender_name', 'N/A')} ({alert.get('sender_country', 'N/A')})",
+                                'receiver': f"{alert.get('receiver_name', 'N/A')} ({alert.get('receiver_country', 'N/A')})",
+                                'amount': amount,
+                                'risk_level': alert.get('risk_level', 'Medium'),
+                                'alert_type': alert.get('alert_type', 'AML Alert')
+                            },
+                            'data': alert
+                        })
+            except Exception as e:
+                print(f"Error searching alerts: {e}")
+        
+        # Search transactions with real data
+        if search_type in ['all', 'transactions']:
+            try:
+                # Get transactions from Supabase database
+                if db and hasattr(db, 'get_transactions'):
+                    transactions_data = db.get_transactions(limit=200)
+                else:
+                    transactions_data = []
+                
+                for txn in transactions_data:
+                    # Create searchable text from all transaction fields
+                    searchable_fields = [
+                        str(txn.get('transaction_id', '')),
+                        str(txn.get('sender_name', '')),
+                        str(txn.get('receiver_name', '')),
+                        str(txn.get('sender_country', '')),
+                        str(txn.get('receiver_country', '')),
+                        str(txn.get('sender_bank', '')),
+                        str(txn.get('receiver_bank', '')),
+                        str(txn.get('transaction_type', '')),
+                        str(txn.get('purpose', ''))
+                    ]
+                    searchable_text = ' '.join(searchable_fields).lower()
+                    
+                    # Check if query matches any field
+                    if query_lower in searchable_text:
+                        # Apply filters
+                        if status_filter != 'all' and txn.get('status', '').lower() != status_filter:
+                            continue
+                        
+                        # Format amount properly
+                        amount = txn.get('amount', 0)
+                        try:
+                            amount = float(amount) if amount else 0
+                        except (ValueError, TypeError):
+                            amount = 0
+                        
+                        results.append({
+                            'type': 'transaction',
+                            'title': f"Transaction {txn.get('transaction_id', 'N/A')} - ${amount:,.2f}",
+                            'details': f"From: {txn.get('sender_name', 'N/A')} ({txn.get('sender_country', 'N/A')}) → To: {txn.get('receiver_name', 'N/A')} ({txn.get('receiver_country', 'N/A')}) | Status: {txn.get('status', 'Unknown')}",
+                            'timestamp': txn.get('created_date', txn.get('timestamp', '')),
+                            'metadata': {
+                                'sender': f"{txn.get('sender_name', 'N/A')} ({txn.get('sender_country', 'N/A')})",
+                                'receiver': f"{txn.get('receiver_name', 'N/A')} ({txn.get('receiver_country', 'N/A')})",
+                                'amount': amount,
+                                'status': txn.get('status', 'Unknown'),
+                                'type': txn.get('transaction_type', 'Transfer')
+                            },
+                            'data': txn
+                        })
+            except Exception as e:
+                print(f"Error searching transactions: {e}")
+        
+        # Search sanctions with real data
+        if search_type in ['all', 'sanctions']:
+            try:
+                # Get sanctions from Supabase sanctions database
+                if aml_engine and hasattr(aml_engine, 'supabase_db') and aml_engine.supabase_db:
+                    # Use the existing get_sanctions_by_name method for name-based search
+                    sanctions_data = aml_engine.supabase_db.get_sanctions_by_name(query)
+                    
+                    for sanction in sanctions_data[:50]:  # Limit to 50 sanctions results
+                        results.append({
+                            'type': 'sanction',
+                            'title': f"Sanctions: {sanction.get('name', 'N/A')}",
+                            'details': f"Country: {sanction.get('country', 'N/A')} | Program: {sanction.get('program', 'N/A')} | Type: {sanction.get('entity_type', 'Individual')} | Source: {sanction.get('source', 'OpenSanctions')}",
+                            'timestamp': sanction.get('updated_at', sanction.get('last_seen', '')),
+                            'metadata': {
+                                'country': sanction.get('country', 'N/A'),
+                                'program': sanction.get('program', 'N/A'),
+                                'entity_type': sanction.get('entity_type', 'Individual'),
+                                'source': sanction.get('source', 'OpenSanctions'),
+                                'schema': sanction.get('schema', 'Person')
+                            },
+                            'data': sanction
+                        })
+            except Exception as e:
+                print(f"Error searching sanctions: {e}")
+        
+        # Sort results by relevance (exact matches first) and timestamp
+        def calculate_relevance(result):
+            title_lower = result['title'].lower()
+            details_lower = result['details'].lower()
+            
+            # Exact match in title gets highest score
+            if query_lower == title_lower:
+                return 1000
+            elif query_lower in title_lower:
+                return 500
+            elif query_lower in details_lower:
+                return 100
+            else:
+                return 1
+        
+        # Add relevance score and sort
+        for result in results:
+            result['relevance_score'] = calculate_relevance(result)
+        
+        results.sort(key=lambda x: (x['relevance_score'], x.get('timestamp', '')), reverse=True)
+        
+        # Limit final results
+        results = results[:limit]
+        
+        return jsonify({
+            'success': True,
+            'query': query,
+            'type': search_type,
+            'total': len(results),
+            'limit': limit,
+            'filters_applied': {
+                'date_range': date_range,
+                'status': status_filter,
+                'risk': risk_filter
+            },
+            'results': results
+        })
+        
+    except Exception as e:
+        print(f"Search API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Search failed: {str(e)}'
+        }), 500
+
+def test_service_endpoint(endpoint):
+    """Test a specific service endpoint and return detailed results"""
+    try:
+        # Handle different endpoint patterns
+        if endpoint == '/api/statistics':
+            if aml_engine and aml_engine.db:
+                stats = aml_engine.get_alert_statistics()
+                return {
+                    'success': True,
+                    'message': 'Statistics endpoint working',
+                    'data': f"Transactions: {stats.get('total_transactions', 0)}, Alerts: {stats.get('total_alerts', 0)}"
+                }
+            else:
+                return {'success': False, 'error': 'Database not available'}
+                
+        elif endpoint == '/api/transactions':
+            if db:
+                stats = db.get_statistics()
+                count = stats.get('total_transactions', 0)
+                return {
+                    'success': True,
+                    'message': 'Transactions endpoint working',
+                    'data': f"Found {count} transactions in database"
+                }
+            else:
+                return {'success': False, 'error': 'Database not available'}
+                
+        elif endpoint == '/api/transactions (POST)':
+            if db and transaction_generator:
+                return {
+                    'success': True,
+                    'message': 'Transaction creation ready',
+                    'data': 'Database and generator available for new transactions'
+                }
+            else:
+                return {'success': False, 'error': 'Transaction system not ready'}
+                
+        elif endpoint == '/api/transactions/batch':
+            if db and aml_engine:
+                return {
+                    'success': True,
+                    'message': 'Batch processing ready',
+                    'data': 'Database and AML engine available for batch processing'
+                }
+            else:
+                return {'success': False, 'error': 'Batch processing system not ready'}
+                
+        elif endpoint == '/api/transactions/process':
+            if aml_engine:
+                supabase_status = 'enabled' if aml_engine.use_supabase else 'disabled'
+                return {
+                    'success': True,
+                    'message': 'AML processing ready',
+                    'data': f'AML engine operational, Supabase: {supabase_status}'
+                }
+            else:
+                return {'success': False, 'error': 'AML engine not available'}
+                
+        elif endpoint == '/api/generate/transactions':
+            if transaction_generator:
+                return {
+                    'success': True,
+                    'message': 'Transaction generator ready',
+                    'data': 'Can generate various transaction types including sanctions risks'
+                }
+            else:
+                return {'success': False, 'error': 'Transaction generator not available'}
+                
+        elif endpoint == '/api/generate/demo-sanctions':
+            if transaction_generator:
+                return {
+                    'success': True,
+                    'message': 'Demo sanctions ready',
+                    'data': 'Can generate demo sanctioned entity transactions'
+                }
+            else:
+                return {'success': False, 'error': 'Transaction generator not available'}
+                
+        elif endpoint == '/api/generate/process':
+            if transaction_generator and aml_engine:
+                return {
+                    'success': True,
+                    'message': 'End-to-end workflow ready',
+                    'data': 'Generator and AML engine available for complete workflow'
+                }
+            else:
+                return {'success': False, 'error': 'Workflow components not available'}
+                
+        elif endpoint == '/api/sanctions/status':
+            if aml_engine and aml_engine.use_supabase and aml_engine.supabase_db:
+                try:
+                    sanctions_count = aml_engine.supabase_db.get_sanctions_count()
+                    total_sanctions = sanctions_count.get('total_sanctions', 0) if isinstance(sanctions_count, dict) else sanctions_count
+                    return {
+                        'success': True,
+                        'message': 'Sanctions database accessible',
+                        'data': f'Supabase contains {total_sanctions} sanctions records'
+                    }
+                except Exception as e:
+                    return {'success': False, 'error': f'Sanctions database error: {str(e)}'}
+            else:
+                return {'success': False, 'error': 'Sanctions database not configured'}
+                
+        elif endpoint == '/api/sanctions/search':
+            if aml_engine and aml_engine.use_supabase and aml_engine.supabase_db:
+                try:
+                    # Test search with a simple query
+                    results = aml_engine.supabase_db.get_sanctions_by_name('test')
+                    return {
+                        'success': True,
+                        'message': 'Sanctions search working',
+                        'data': f'Search functionality operational (test query returned {len(results)} results)'
+                    }
+                except Exception as e:
+                    return {'success': False, 'error': f'Search error: {str(e)}'}
+            else:
+                return {'success': False, 'error': 'Sanctions search not available'}
+                
+        elif endpoint == '/api/sanctions/refresh':
+            return {
+                'success': True,
+                'message': 'Sanctions refresh available',
+                'data': 'Refresh endpoint ready (test does not execute actual refresh)'
+            }
+            
+        elif endpoint == '/api/dashboard/data':
+            if aml_engine:
+                try:
+                    alert_stats = aml_engine.get_alert_statistics()
+                    return {
+                        'success': True,
+                        'message': 'Dashboard data accessible',
+                        'data': f"Dashboard ready with {alert_stats.get('total_alerts', 0)} alerts"
+                    }
+                except Exception as e:
+                    return {'success': False, 'error': f'Dashboard data error: {str(e)}'}
+            else:
+                return {'success': False, 'error': 'Dashboard system not available'}
+                
+        elif endpoint == '/api/alerts':
+            if aml_engine:
+                return {
+                    'success': True,
+                    'message': 'Alert system operational',
+                    'data': 'Alert retrieval and management available'
+                }
+            else:
+                return {'success': False, 'error': 'Alert system not available'}
+                
+        elif endpoint.startswith('/api/alerts/') and endpoint.endswith('/update'):
+            if aml_engine and aml_engine.db:
+                return {
+                    'success': True,
+                    'message': 'Alert updates ready',
+                    'data': 'Alert update functionality available'
+                }
+            else:
+                return {'success': False, 'error': 'Alert update system not available'}
+                
+        else:
+            return {
+                'success': False,
+                'error': f'Unknown endpoint: {endpoint}'
+            }
+            
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Service test failed: {str(e)}'
+        }
 
 @app.route('/api/statistics', methods=['GET'])
 def get_statistics():
