@@ -49,6 +49,66 @@ class TransactionGenerator:
             'BVI': ['OFFSHORE_TRUST', 'BVI_INTERNATIONAL']
         }
     
+    def _get_random_sanctions_entities(self, supabase_db, count: int = 10) -> List[Dict]:
+        """Get random sanctions entities from the database"""
+        try:
+            # First get the total count to calculate random offsets
+            total_count = supabase_db.get_sanctions_count()
+            print(f"📊 Total sanctions entities available: {total_count}")
+            
+            if total_count == 0:
+                print("⚠️ No sanctions entities in database")
+                return []
+            
+            # Generate random offsets to get truly random entities from the 57,842+ entities
+            random_entities = []
+            max_attempts = count * 5  # Allow more attempts to get unique entities
+            
+            for attempt in range(max_attempts):
+                if len(random_entities) >= count:
+                    break
+                
+                # Generate random offset within the total count
+                random_offset = random.randint(0, total_count - 1)
+                
+                # Get one entity at this offset
+                result = supabase_db.supabase.table(supabase_db.table_name)\
+                    .select("*")\
+                    .range(random_offset, random_offset)\
+                    .execute()
+                
+                if result.data and len(result.data) > 0:
+                    entity = result.data[0]
+                    # Avoid duplicates by checking entity_id
+                    if not any(e.get('entity_id') == entity.get('entity_id') for e in random_entities):
+                        random_entities.append(entity)
+                        print(f"🎲 Selected entity {len(random_entities)}: {entity.get('primary_name', entity.get('name', 'Unknown'))} (offset: {random_offset})")
+            
+            print(f"✅ Successfully selected {len(random_entities)} random sanctions from {total_count} total entities")
+            return random_entities
+                
+        except Exception as e:
+            print(f"❌ Error getting random sanctions: {e}")
+            # Fallback to the original method if the new approach fails
+            try:
+                sample_size = min(count * 20, 1000)  # Reasonable fallback sample size
+                result = supabase_db.supabase.table(supabase_db.table_name)\
+                    .select("*")\
+                    .limit(sample_size)\
+                    .execute()
+                
+                if result.data and len(result.data) > 0:
+                    available_entities = result.data
+                    random.shuffle(available_entities)
+                    selected_entities = available_entities[:count]
+                    print(f"🔄 Fallback: Selected {len(selected_entities)} random sanctions from {len(available_entities)} sampled entities")
+                    return selected_entities
+                else:
+                    return []
+            except Exception as fallback_error:
+                print(f"❌ Fallback also failed: {fallback_error}")
+                return []
+    
     def generate_account_id(self) -> str:
         """Generate realistic account ID"""
         return f"ACC-{random.randint(10000, 99999)}"
@@ -86,19 +146,14 @@ class TransactionGenerator:
             from supabase_sanctions import SupabaseSanctionsDB
             supabase_db = SupabaseSanctionsDB()
             
-            # Try different names that exist in current sanctions database
-            test_names = ['Adrian Jose Velasquez Figueroa', 'Dmitriev Vyacheslav', 'Kulakov Vladimir', 'Tehran', 'Putin']
-            sanctions = None
+            # Get random sanctions entities from the 57,842 available
+            random_sanctions = self._get_random_sanctions_entities(supabase_db, count=10)
             
-            for test_name in test_names:
-                sanctions = supabase_db.get_sanctions_by_name(test_name)
-                if sanctions:
-                    break
-            
-            if sanctions:
-                sanctioned_entity = random.choice(sanctions)
-                sanctioned_name = sanctioned_entity['name']
-                sanctioned_entity_id = sanctioned_entity.get('entity_id', f"UNKNOWN_{sanctioned_entity.get('id', 'NOID')}")
+            if random_sanctions and len(random_sanctions) > 0:
+                sanctioned_entity = random.choice(random_sanctions)
+                # Handle both old and new field names
+                sanctioned_name = sanctioned_entity.get('primary_name') or sanctioned_entity.get('name', 'Unknown Entity')
+                sanctioned_entity_id = sanctioned_entity.get('entity_id', f"DB_ID_{sanctioned_entity.get('id', 'UNKNOWN')}")
                 
                 # Parse countries from JSON if available
                 countries = sanctioned_entity.get('countries', '[]')
@@ -109,14 +164,18 @@ class TransactionGenerator:
                         sanctioned_country = countries_list[0] if countries_list else 'RU'
                     except:
                         sanctioned_country = 'RU'
-                else:
+                elif isinstance(countries, list):
                     sanctioned_country = countries[0] if countries else 'RU'
+                else:
+                    sanctioned_country = 'RU'
+                
+                print(f"🎯 Using real sanctioned entity: {sanctioned_name} from {sanctioned_country}")
             else:
-                raise Exception("No Supabase data")
+                raise Exception("No random sanctions data available")
                 
         except Exception as e:
-            print(f"⚠️ Could not fetch from Supabase: {e}")
-            # Enhanced fallback list with realistic sanctioned entities for testing
+            print(f"⚠️ Could not fetch random sanctions from database: {e}")
+            # Minimal fallback for when database is unavailable
             sanctioned_entities = [
                 {'name': 'Vladimir Putin', 'country': 'RU', 'program': 'RUSSIA_SANCTIONS'},
                 {'name': 'Kim Jong Un', 'country': 'KP', 'program': 'NORTH_KOREA_SANCTIONS'},
