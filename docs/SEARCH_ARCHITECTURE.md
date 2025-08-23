@@ -127,18 +127,18 @@ def calculate_relevance(result, query):
 
 ```mermaid
 graph TD
-    A[👤 User Input<br/>"John Smith"] --> B[🔧 Query Processor<br/>• Sanitization<br/>• Normalization<br/>• Type Detection]
-    B --> C{🎯 Router Logic<br/>Determines which<br/>databases to search}
+    A[User Input<br/>Query: John Smith] --> B[Query Processor<br/>Sanitization<br/>Normalization<br/>Type Detection]
+    B --> C{Router Logic<br/>Determines which<br/>databases to search}
     
-    C --> D[💾 Transaction Database<br/>ILIKE Search<br/>205+ Records]
-    C --> E[🚨 AML Alerts Engine<br/>In-Memory Filter<br/>32 Active Alerts]
-    C --> F[⚖️ Sanctions Database<br/>Full-Text Search<br/>57,000+ Records]
+    C --> D[Transaction Database<br/>ILIKE Search<br/>205+ Records]
+    C --> E[AML Alerts Engine<br/>In-Memory Filter<br/>32 Active Alerts]
+    C --> F[Sanctions Database<br/>Full-Text Search<br/>57,000+ Records]
     
-    D --> G[📊 Result Merger<br/>• Deduplication<br/>• Relevance Scoring<br/>• Sorting]
+    D --> G[Result Merger<br/>Deduplication<br/>Relevance Scoring<br/>Sorting]
     E --> G
     F --> G
     
-    G --> H[✅ Final JSON Response<br/>{success: true,<br/>results: [...]}]
+    G --> H[Final JSON Response<br/>success: true<br/>results: array]
     
     style A fill:#e1f5fe
     style B fill:#f3e5f5
