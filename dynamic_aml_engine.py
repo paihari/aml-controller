@@ -11,6 +11,7 @@ from supabase_sanctions import SupabaseSanctionsDB
 import re
 import os
 from dotenv import load_dotenv
+from aml_logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
 
 # Load environment variables
 load_dotenv()
@@ -414,15 +415,30 @@ class DynamicAMLEngine:
     
     def get_alert_statistics(self) -> Dict:
         """Get current alert statistics"""
+        logger = AMLLogger.get_logger('alert_statistics', 'statistics')
+        log_function_entry(logger, 'get_alert_statistics', use_supabase=self.use_supabase)
+        
         # Include Supabase sanctions count if using Supabase
         supabase_count = None
         if self.use_supabase and self.supabase_db:
             try:
+                logger.info("Attempting to get Supabase sanctions count")
                 supabase_count = self.supabase_db.get_sanctions_count()
+                AMLLogger.log_statistics('AML_Engine', 'supabase_sanctions_count', supabase_count, "Retrieved from Supabase")
+                logger.info(f"Successfully retrieved Supabase count: {supabase_count}")
             except Exception as e:
-                print(f"⚠️ Error getting Supabase sanctions count: {e}")
+                log_error_with_context(logger, e, 'get_supabase_sanctions_count', use_supabase=self.use_supabase)
+                supabase_count = None
+        else:
+            logger.info(f"Skipping Supabase count - use_supabase={self.use_supabase}, supabase_db={bool(self.supabase_db)}")
         
-        return self.db.get_statistics(supabase_sanctions_count=supabase_count)
+        logger.info(f"Calling db.get_statistics with supabase_sanctions_count={supabase_count}")
+        stats = self.db.get_statistics(supabase_sanctions_count=supabase_count)
+        
+        AMLLogger.log_statistics('AML_Engine', 'final_total_sanctions', stats.get('total_sanctions', 0), "Final statistics result")
+        log_function_exit(logger, 'get_alert_statistics', result={'total_sanctions': stats.get('total_sanctions', 0)})
+        
+        return stats
 
 if __name__ == "__main__":
     # Test the dynamic AML engine

@@ -29,7 +29,7 @@ def main():
         from sanctions_loader import SanctionsLoader
         
         db = AMLDatabase()
-        loader = SanctionsLoader(db)
+        loader = SanctionsLoader()
         
         # Load fresh OpenSanctions data
         print("\n📥 Loading OpenSanctions daily datasets...")
@@ -86,18 +86,8 @@ def main():
         else:
             error = result.get('error', 'Unknown error')
             print(f"\n❌ Failed to load sanctions data: {error}")
-            
-            # Try to load fallback data if daily datasets fail
-            print("\n🔄 Attempting to load fallback sanctions data...")
-            fallback_result = loader._load_fallback_sanctions()
-            
-            if fallback_result.get('success'):
-                fallback_count = fallback_result.get('count', 0)
-                print(f"✅ Loaded {fallback_count} fallback sanctions records")
-                return True
-            else:
-                print("❌ Fallback data loading also failed")
-                return False
+            print("💡 Note: Sanctions system requires successful Supabase connection and data loading.")
+            return False
     
     except Exception as e:
         print(f"\n❌ Error during population: {e}")

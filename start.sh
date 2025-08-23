@@ -46,13 +46,18 @@ from dynamic_aml_engine import DynamicAMLEngine
 
 # Setup system
 db = AMLDatabase()
-loader = SanctionsLoader(db)
+loader = SanctionsLoader()
 generator = TransactionGenerator(db)
 engine = DynamicAMLEngine(db)
 
 # Load initial data
-print('📥 Loading sanctions data...')
-loader._load_fallback_sanctions()
+print('📥 Loading sanctions data from OpenSanctions...')
+try:
+    loader.refresh_sanctions_data()
+    print('✅ Sanctions data loaded successfully')
+except Exception as e:
+    print(f'❌ Error loading sanctions data: {e}')
+    print('💡 Note: Requires Supabase connection for sanctions data')
 
 print('🎲 Generating initial transactions...')
 transactions = generator.generate_mixed_batch(15)

@@ -26,8 +26,8 @@ def create_table_via_insert():
         
         # Test if table exists by trying to query it
         try:
-            result = supabase.table('sanctions').select('id').limit(1).execute()
-            print("✅ Sanctions table already exists")
+            result = supabase.table('sanctions_entities').select('id').limit(1).execute()
+            print("✅ Sanctions entities table already exists")
             return True
         except Exception as e:
             print(f"⚠️ Table doesn't exist yet: {e}")

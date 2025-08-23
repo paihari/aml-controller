@@ -487,14 +487,13 @@ class AMLDatabase:
         if self.use_supabase and self.supabase_aml:
             supabase_stats = self.supabase_aml.get_statistics()
             
-            # Add sanctions count (either provided or from SQLite)
+            # Add sanctions count (ONLY use Supabase when using Supabase)
             if supabase_sanctions_count is not None:
                 supabase_stats['total_sanctions'] = supabase_sanctions_count
             else:
-                conn = self.get_connection()
-                cursor = conn.execute("SELECT COUNT(*) as count FROM sanctions")
-                supabase_stats['total_sanctions'] = cursor.fetchone()['count']
-                conn.close()
+                # DO NOT fall back to SQLite - force 0 if Supabase fails
+                print("⚠️ Warning: Could not get Supabase sanctions count, using 0")
+                supabase_stats['total_sanctions'] = 0
             
             return supabase_stats
         

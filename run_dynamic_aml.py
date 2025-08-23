@@ -44,7 +44,7 @@ def initialize_system():
         db = AMLDatabase()
         
         print("📥 Loading sanctions data...")
-        sanctions_loader = SanctionsLoader(db)
+        sanctions_loader = SanctionsLoader()
         sanctions_result = sanctions_loader.refresh_sanctions_data()
         print(f"   ✅ Sanctions loaded: {sanctions_result}")
         

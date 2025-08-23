@@ -17,6 +17,7 @@ from transaction_generator import TransactionGenerator
 from sanctions_loader import SanctionsLoader
 from plane_integration import PlaneIntegration
 from dotenv import load_dotenv
+from aml_logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
 
 app = Flask(__name__)
 CORS(app)
@@ -159,7 +160,7 @@ def check_existing_sanctions_supabase(entity_ids: List[str]) -> List[str]:
         for i in range(0, len(entity_ids), 100):
             batch_ids = entity_ids[i:i + 100]
             # Use Supabase client to check existing records
-            result = aml_engine.supabase_db.supabase.table('sanctions').select('entity_id').in_('entity_id', batch_ids).execute()
+            result = aml_engine.supabase_db.supabase.table('sanctions_entities').select('entity_id').in_('entity_id', batch_ids).execute()
             existing_ids.extend([record['entity_id'] for record in result.data])
     except Exception as e:
         print(f"⚠️ Warning: Error checking existing records: {e}")
@@ -178,7 +179,7 @@ def insert_sanctions_supabase(sanctions: List[Dict]) -> int:
         
         for i in range(0, len(sanctions), batch_size):
             batch = sanctions[i:i + batch_size]
-            result = aml_engine.supabase_db.supabase.table('sanctions').insert(batch).execute()
+            result = aml_engine.supabase_db.supabase.table('sanctions_entities').insert(batch).execute()
             if result.data:
                 total_inserted += len(result.data)
         
@@ -322,7 +323,7 @@ try:
     db = AMLDatabase()
     aml_engine = DynamicAMLEngine(db)
     transaction_generator = TransactionGenerator(db)
-    sanctions_loader = SanctionsLoader(db)
+    sanctions_loader = SanctionsLoader()
     plane = PlaneIntegration()
     print("✅ AML components initialized successfully")
 except Exception as e:
@@ -571,30 +572,40 @@ def generate_demo_sanctions():
 
 @app.route('/api/sanctions/refresh', methods=['POST'])
 def refresh_sanctions():
-    """Refresh sanctions data from external sources with API key vs dataset file logic"""
+    """Refresh sanctions data from OpenSanctions Consolidated Sanctions dataset"""
     try:
+        from sanctions_web_loader import refresh_sanctions_web
+        
         # Get request parameters
         params = request.get_json() or {}
-        dataset = params.get('dataset', 'all')
-        batch_size = params.get('batch_size', 100)
+        user_confirmed = params.get('confirmed', False)
         
-        # Debug marker to ensure we're using the latest code
-        print(f"🔍 REFRESH ENDPOINT: Using latest code version with batch_size={batch_size}")
+        print(f"🔍 SANCTIONS REFRESH: User confirmed = {user_confirmed}")
         
-        # Check if OpenSanctions API key is available
-        load_dotenv()
-        opensanctions_api_key = os.getenv('OPENSANCTIONS_API_KEY')
+        # Use the new OpenSanctions pipeline
+        result = refresh_sanctions_web(user_confirmed)
         
-        # Debug: Always show which path we're taking
-        print(f"🔍 API KEY CHECK: opensanctions_api_key = {opensanctions_api_key}")
-        if opensanctions_api_key:
-            # Use OpenSanctions API (paid service)
-            print(f"🔍 TAKING API PATH")
-            return _refresh_sanctions_via_api(dataset, batch_size, opensanctions_api_key)
+        if result.get('requires_confirmation'):
+            return jsonify({
+                'success': False,
+                'requires_confirmation': True,
+                'message': result.get('message', 'Confirmation required'),
+                'warning': 'This will clear all existing sanctions data and reload from OpenSanctions'
+            }), 200
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': result.get('message', 'Sanctions refreshed successfully'),
+                'statistics': result.get('statistics', {}),
+                'timestamp': result.get('timestamp')
+            })
         else:
-            # Use OpenSanctions dataset files (free public data)
-            print(f"🔍 TAKING DATASET FILE PATH")
-            return _refresh_sanctions_via_datasets(dataset, batch_size)
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Unknown error'),
+                'message': result.get('message', 'Sanctions refresh failed')
+            }), 500
             
     except Exception as e:
         return jsonify({
@@ -626,10 +637,14 @@ def _refresh_sanctions_via_api(dataset: str, batch_size: int, api_key: str):
 
 def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
     """Refresh sanctions using OpenSanctions dataset files (free public data)"""
+    logger = AMLLogger.get_logger('sanctions_refresh', 'sanctions')
+    log_function_entry(logger, '_refresh_sanctions_via_datasets', dataset=dataset, batch_size=batch_size)
+    
     try:
         debug_info = []
         
         if not sanctions_loader:
+            logger.error("Sanctions loader not initialized")
             return jsonify({
                 'success': False,
                 'error': 'Sanctions loader not initialized',
@@ -640,9 +655,14 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
             }), 503
         
         # Get current sanctions count before loading
+        logger.info("Getting current sanctions count from statistics")
         current_stats = aml_engine.get_alert_statistics()
-        initial_sanctions = current_stats.get('sanctions_count', 0)
+        initial_sanctions = current_stats.get('total_sanctions', 0)
+        logger.info(f"Current sanctions count: {initial_sanctions}")
+        logger.info(f"Statistics keys available: {list(current_stats.keys())}")
+        
         debug_info.append(f"Initial sanctions count: {initial_sanctions}")
+        debug_info.append(f"Stats keys: {list(current_stats.keys())}")
         
         # Use existing sanctions loader with limited batch size
         debug_info.append(f"Setting batch_size = {batch_size} on sanctions_loader")
@@ -664,7 +684,7 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
         
         # Get new sanctions count after loading
         new_stats = aml_engine.get_alert_statistics()
-        final_sanctions = new_stats.get('sanctions_count', 0)
+        final_sanctions = new_stats.get('total_sanctions', 0)
         
         # Calculate actual loaded count
         total_loaded = max(0, final_sanctions - initial_sanctions)
@@ -714,6 +734,37 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
         }), 500
 
 
+@app.route('/api/sanctions/status', methods=['GET'])
+def get_sanctions_status():
+    """Get current sanctions data status and statistics"""
+    try:
+        from sanctions_web_loader import get_sanctions_status
+        
+        result = get_sanctions_status()
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'status': result.get('status'),
+                'message': result.get('message'),
+                'statistics': result.get('statistics', {}),
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('message', 'Unknown error'),
+                'status': 'error'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+
 @app.route('/api/sanctions/search', methods=['GET'])
 def search_sanctions():
     """Search sanctions by name"""
@@ -726,12 +777,14 @@ def search_sanctions():
                 'error': 'Name parameter is required'
             }), 400
         
-        # Use Supabase as the authoritative source for sanctions data
-        if hasattr(aml_engine, 'supabase_db') and aml_engine.supabase_db:
-            sanctions = aml_engine.supabase_db.get_sanctions_by_name(name)
-        else:
-            # Fallback to local DB only if Supabase is not available
-            sanctions = db.get_sanctions_by_name(name)
+        # Use Supabase as the only source for sanctions data
+        if not hasattr(aml_engine, 'supabase_db') or not aml_engine.supabase_db:
+            return jsonify({
+                'success': False,
+                'error': 'Sanctions database not available. Supabase connection required.'
+            }), 503
+            
+        sanctions = aml_engine.supabase_db.get_sanctions_by_name(name)
         
         return jsonify({
             'success': True,
@@ -1132,13 +1185,8 @@ def initialize_system():
         sanctions_loader.refresh_sanctions_data()
         print("✅ Sanctions data loaded successfully")
     except Exception as e:
-        print(f"⚠️  Warning: Could not load sanctions data: {e}")
-        # Load fallback data instead
-        try:
-            sanctions_loader._load_fallback_sanctions()
-            print("✅ Fallback sanctions data loaded")
-        except Exception as e2:
-            print(f"⚠️  Warning: Could not load fallback data: {e2}")
+        print(f"❌ Error: Could not load sanctions data: {e}")
+        print("💡 Note: Sanctions system requires Supabase connection. Please check configuration.")
     
     # Generate some initial data for testing
     print("🎲 Generating initial test data...")

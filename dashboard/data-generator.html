@@ -336,10 +336,10 @@
             <a href="/dashboard/minimalist.html" class="btn btn-secondary">← Back to Dashboard</a>
         </div>
 
-        <!-- Transaction Generator -->
+        <!-- 1. Transaction Generator Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">Transaction Generator</div>
+                <div class="section-title">1. Transaction Generator</div>
                 <div class="section-subtitle">Generate realistic sample transactions for AML testing</div>
             </div>
             <div class="section-content">
@@ -388,85 +388,10 @@
             </div>
         </div>
 
-        <!-- Sanctions Data Loader -->
+        <!-- 2. Transaction Processing Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">Sanctions Data Loader</div>
-                <div class="section-subtitle">Fetch latest sanctions data from OpenSanctions</div>
-            </div>
-            <div class="section-content">
-                <div class="generator-grid">
-                    <div class="generator-card">
-                        <div class="generator-title">OpenSanctions Refresh</div>
-                        <div class="generator-description">Download and process the latest sanctions data from multiple datasets</div>
-                        <div class="generator-controls">
-                            <div class="control-group">
-                                <label class="control-label">Dataset Selection</label>
-                                <select class="control-input" id="sanctionsDataset">
-                                    <option value="all" selected>All Datasets (Recommended)</option>
-                                    <option value="sanctions">Sanctions Only</option>
-                                    <option value="peps">PEPs Only</option>
-                                    <option value="debarment">Debarment Only</option>
-                                </select>
-                            </div>
-                            <div class="control-group">
-                                <label class="control-label">Batch Size</label>
-                                <select class="control-input" id="sanctionsBatchSize">
-                                    <option value="50">50 records</option>
-                                    <option value="100" selected>100 records</option>
-                                    <option value="500">500 records</option>
-                                </select>
-                            </div>
-                            <button class="btn btn-primary" onclick="refreshSanctions()" id="refreshSanctionsBtn">
-                                Refresh Sanctions Data
-                            </button>
-                        </div>
-                        <div class="progress-container hidden" id="sanctionsProgress">
-                            <div class="progress-header">
-                                <span class="progress-text" id="sanctionsProgressText">Loading sanctions data...</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="sanctionsProgressFill"></div>
-                            </div>
-                            <div class="progress-details" id="sanctionsProgressDetails">Connecting to OpenSanctions...</div>
-                        </div>
-                        <div class="results-container hidden" id="sanctionsResults">
-                            <div class="results-title">Load Results</div>
-                            <div class="results-list" id="sanctionsResultsList"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="generator-card">
-                        <div class="generator-title">Current Sanctions Status</div>
-                        <div class="generator-description">View current sanctions database statistics</div>
-                        <div class="generator-controls">
-                            <div style="padding: 16px; background: #f9fafb; border-radius: 6px; margin-bottom: 16px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                    <span style="color: #374151;">Total Records:</span>
-                                    <span style="font-weight: 600;" id="currentSanctionsCount">-</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                    <span style="color: #374151;">Last Updated:</span>
-                                    <span style="font-weight: 600;" id="lastUpdated">-</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span style="color: #374151;">Data Source:</span>
-                                    <span style="font-weight: 600;">OpenSanctions</span>
-                                </div>
-                            </div>
-                            <button class="btn btn-secondary" onclick="loadSanctionsStatus()" id="statusBtn">
-                                Refresh Status
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Transaction Processing -->
-        <div class="section">
-            <div class="section-header">
-                <div class="section-title">Transaction Processing</div>
+                <div class="section-title">2. Transaction Processing</div>
                 <div class="section-subtitle">Process pending transactions through AML detection engine</div>
             </div>
             <div class="section-content">
@@ -506,6 +431,101 @@
                 </div>
             </div>
         </div>
+
+        <!-- 3. Sanctions Entities Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">3. Sanctions Entities</div>
+                <div class="section-subtitle">Current sanctions database status and data refresh controls</div>
+            </div>
+            <div class="section-content">
+                <!-- First Row: Current Sanctions Statistics (Full Width) -->
+                <div class="generator-grid">
+                    <div class="generator-card">
+                        <div class="generator-title">Current Sanctions Status</div>
+                        <div class="generator-description">Real-time statistics of sanctions_entities table</div>
+                        <div class="generator-controls">
+                            <div style="padding: 16px; background: #f9fafb; border-radius: 6px; margin-bottom: 16px;">
+                                <!-- Total Entities Summary -->
+                                <div style="text-align: center; margin-bottom: 20px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                    <div style="font-size: 28px; font-weight: 700; color: #1e293b;" id="currentEntitiesCount">-</div>
+                                    <div style="font-size: 14px; color: #64748b; margin-top: 4px;">Total Entities</div>
+                                </div>
+
+                                <!-- Entity Types Grid -->
+                                <div style="margin-bottom: 20px;">
+                                    <div style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 4px;">Entity Types Breakdown</div>
+                                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Complete count of all sanctioned entities by type</div>
+                                    <div id="entityTypesGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">
+                                        <!-- Populated by JavaScript -->
+                                    </div>
+                                </div>
+
+                                <!-- Risk Levels Grid -->
+                                <div style="margin-bottom: 20px;">
+                                    <div style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 4px;">Risk Classification</div>
+                                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Distribution of entities by AML risk level</div>
+                                    <div id="riskLevelsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px;">
+                                        <!-- Populated by JavaScript -->
+                                    </div>
+                                </div>
+
+                                <!-- Metadata -->
+                                <div style="border-top: 1px solid #e2e8f0; padding-top: 16px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                        <span style="color: #64748b; font-size: 13px;">Last Updated:</span>
+                                        <span style="font-weight: 500; font-size: 13px;" id="lastUpdated">-</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: #64748b; font-size: 13px;">Data Source:</span>
+                                        <span style="font-weight: 500; font-size: 13px;">OpenSanctions</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary" onclick="loadSanctionsEntitiesStatus()" id="statusBtn">
+                                🔄 Refresh Status
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Second Row: OpenSanctions Refresh (Full Width) -->
+                <div class="generator-grid" style="margin-top: 20px;">
+                    <div class="generator-card">
+                        <div class="generator-title">OpenSanctions Refresh</div>
+                        <div class="generator-description">⚠️ This will clear ALL existing sanctions data and reload from OpenSanctions Consolidated Sanctions dataset</div>
+                        <div class="generator-controls">
+                            <div style="padding: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; margin-bottom: 16px;">
+                                <div style="color: #dc2626; font-weight: 600; margin-bottom: 8px;">⚠️ Destructive Operation</div>
+                                <div style="color: #991b1b; font-size: 14px;">
+                                    • All current sanctions_entities will be deleted<br>
+                                    • Fresh data will be downloaded from OpenSanctions<br>
+                                    • Process may take 2-5 minutes<br>
+                                    • Confirmation required before proceeding
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="confirmSanctionsRefresh()" id="refreshSanctionsBtn">
+                                🔄 Refresh Sanctions Entities
+                            </button>
+                        </div>
+                        <div class="progress-container hidden" id="sanctionsProgress">
+                            <div class="progress-header">
+                                <span class="progress-text" id="sanctionsProgressText">Loading sanctions data...</span>
+                                <span style="font-weight: 600;" id="sanctionsProgressPercent">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="sanctionsProgressFill"></div>
+                            </div>
+                            <div class="progress-details" id="sanctionsProgressDetails">Initializing...</div>
+                        </div>
+                        <div class="results-container hidden" id="sanctionsResults">
+                            <div class="results-title">Load Results</div>
+                            <div class="results-list" id="sanctionsResultsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -520,8 +540,8 @@
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             updateServerUptime();
-            loadSanctionsStatus();
             loadTransactionStatus();
+            loadSanctionsEntitiesStatus();
             
             // Update uptime every 5 seconds
             setInterval(updateServerUptime, 5000);
@@ -607,80 +627,6 @@
             }
         }
 
-        // Refresh Sanctions Data
-        async function refreshSanctions() {
-            const dataset = document.getElementById('sanctionsDataset').value;
-            const batchSize = document.getElementById('sanctionsBatchSize').value;
-            const btn = document.getElementById('refreshSanctionsBtn');
-            const progress = document.getElementById('sanctionsProgress');
-            const results = document.getElementById('sanctionsResults');
-            
-            btn.disabled = true;
-            btn.textContent = 'Loading...';
-            progress.classList.remove('hidden');
-            results.classList.add('hidden');
-            
-            try {
-                updateProgress('sanctions', 0, 'Connecting to OpenSanctions API...');
-                
-                const response = await fetch(`${API_BASE}/sanctions/refresh`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        dataset: dataset,
-                        batch_size: parseInt(batchSize)
-                    })
-                });
-                
-                updateProgress('sanctions', 30, 'Downloading sanctions data...');
-                
-                const data = await response.json();
-                
-                updateProgress('sanctions', 70, 'Processing and storing data...');
-                
-                setTimeout(() => {
-                    updateProgress('sanctions', 100, 'Sanctions data loaded successfully!');
-                    
-                    setTimeout(() => {
-                        progress.classList.add('hidden');
-                        results.classList.remove('hidden');
-                        
-                        const totalLoaded = data.total_loaded || 0;
-                        const totalSkipped = data.total_skipped || 0;
-                        const totalProcessed = data.total_processed || 0;
-                        const batchSizeUsed = data.batch_size || batchSize;
-                        const debugInfo = data.debug_info || [];
-                        
-                        let debugHtml = '';
-                        if (debugInfo.length > 0) {
-                            debugHtml = '<br><br><strong>🔍 Debug Info:</strong><br>' + 
-                                       debugInfo.map(info => `• ${info}`).join('<br>');
-                        }
-                        
-                        document.getElementById('sanctionsResultsList').innerHTML = `
-                            ✅ Loaded ${totalLoaded.toLocaleString()} new records<br>
-                            ⏭️ Skipped ${totalSkipped.toLocaleString()} existing records<br>
-                            📊 Total processed: ${totalProcessed.toLocaleString()} records<br>
-                            📦 Batch size: ${batchSizeUsed}<br>
-                            📋 Dataset: ${dataset}<br>
-                            🔄 Status: ${data.success ? 'Success' : 'Failed'}<br>
-                            🗂️ Source: ${data.source || 'OpenSanctions'}<br>
-                            ⏱️ Updated at: ${new Date().toLocaleTimeString()}
-                            ${debugHtml}
-                        `;
-                        
-                        loadSanctionsStatus();
-                    }, 1000);
-                }, 1000);
-                
-            } catch (error) {
-                console.error('Error refreshing sanctions:', error);
-                updateProgress('sanctions', 100, 'Error loading sanctions data');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Refresh Sanctions Data';
-            }
-        }
 
         // Process Pending Transactions
         async function processPendingTransactions() {
@@ -730,22 +676,198 @@
             }
         }
 
-        // Load current sanctions status
-        async function loadSanctionsStatus() {
+        // Confirm Sanctions Refresh with user confirmation
+        function confirmSanctionsRefresh() {
+            const confirmMessage = `⚠️ DESTRUCTIVE OPERATION WARNING ⚠️
+
+This will:
+• DELETE ALL existing sanctions entities from the database
+• Download fresh data from OpenSanctions (~71K entities)
+• Process and load ~57K valid entities
+• Take approximately 2-5 minutes to complete
+
+This action cannot be undone. Are you sure you want to proceed?`;
+
+            if (confirm(confirmMessage)) {
+                refreshSanctionsEntities();
+            }
+        }
+
+        // Refresh Sanctions Entities Data
+        async function refreshSanctionsEntities() {
+            const btn = document.getElementById('refreshSanctionsBtn');
+            const progress = document.getElementById('sanctionsProgress');
+            const results = document.getElementById('sanctionsResults');
+            
+            btn.disabled = true;
+            btn.textContent = '🔄 Loading...';
+            progress.classList.remove('hidden');
+            results.classList.add('hidden');
+            
             try {
-                const response = await fetch(`${API_BASE}/statistics`);
+                // Step 1: Initial API call (no confirmation needed since user already confirmed)
+                updateSanctionsProgress(0, 'Initializing OpenSanctions pipeline...', 'Connecting to API...');
+                
+                const response = await fetch(`${API_BASE}/sanctions/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirmed: true })
+                });
+                
+                const data = await response.json();
+                
+                if (data.requires_confirmation) {
+                    // This shouldn't happen since we're passing confirmed: true
+                    updateSanctionsProgress(0, 'Error: Confirmation required', 'Please try again');
+                    return;
+                }
+                
+                if (data.success) {
+                    // Simulate realistic progress since we don't have real-time progress from backend
+                    updateSanctionsProgress(10, 'Downloading OpenSanctions data...', 'Fetching ~71K entities from OpenSanctions API');
+                    
+                    // Simulate progress updates
+                    setTimeout(() => {
+                        updateSanctionsProgress(30, 'Processing entities...', 'Transforming Senzing JSON to AML schema');
+                    }, 2000);
+                    
+                    setTimeout(() => {
+                        updateSanctionsProgress(50, 'Validating data...', 'Processing entity types and identifiers');
+                    }, 4000);
+                    
+                    setTimeout(() => {
+                        updateSanctionsProgress(70, 'Clearing existing data...', 'Removing old sanctions_entities records');
+                    }, 6000);
+                    
+                    setTimeout(() => {
+                        updateSanctionsProgress(90, 'Inserting new data...', 'Batch inserting ~57K entities');
+                    }, 8000);
+                    
+                    setTimeout(() => {
+                        updateSanctionsProgress(100, 'Completed successfully!', 'Sanctions entities loaded');
+                        
+                        // Show results
+                        setTimeout(() => {
+                            progress.classList.add('hidden');
+                            results.classList.remove('hidden');
+                            
+                            const stats = data.statistics || {};
+                            const entityTypes = stats.entity_types || {};
+                            const riskLevels = stats.risk_levels || {};
+                            
+                            document.getElementById('sanctionsResultsList').innerHTML = `
+                                ✅ Successfully loaded ${stats.total_entities?.toLocaleString() || 'N/A'} entities<br>
+                                👥 People: ${entityTypes.person?.toLocaleString() || '0'}<br>
+                                🏢 Organizations: ${entityTypes.organization?.toLocaleString() || '0'}<br>
+                                🏪 Companies: ${entityTypes.company?.toLocaleString() || '0'}<br>
+                                🚨 Critical Risk: ${riskLevels.CRITICAL?.toLocaleString() || '0'}<br>
+                                ⚠️ High Risk: ${riskLevels.HIGH?.toLocaleString() || '0'}<br>
+                                📅 Completed: ${new Date().toLocaleTimeString()}<br>
+                                📊 Source: OpenSanctions Consolidated Sanctions
+                            `;
+                            
+                            // Refresh status display
+                            loadSanctionsEntitiesStatus();
+                        }, 1000);
+                    }, 10000);
+                    
+                } else {
+                    updateSanctionsProgress(100, 'Error occurred', data.error || 'Unknown error');
+                    
+                    setTimeout(() => {
+                        progress.classList.add('hidden');
+                        results.classList.remove('hidden');
+                        document.getElementById('sanctionsResultsList').innerHTML = `
+                            ❌ Error: ${data.error || 'Unknown error'}<br>
+                            💡 Please check logs and try again<br>
+                            📅 Failed at: ${new Date().toLocaleTimeString()}
+                        `;
+                    }, 2000);
+                }
+                
+            } catch (error) {
+                console.error('Error refreshing sanctions entities:', error);
+                updateSanctionsProgress(100, 'Network error occurred', error.message);
+                
+                setTimeout(() => {
+                    progress.classList.add('hidden');
+                    results.classList.remove('hidden');
+                    document.getElementById('sanctionsResultsList').innerHTML = `
+                        ❌ Network Error: ${error.message}<br>
+                        🔧 Check server connection and try again<br>
+                        📅 Failed at: ${new Date().toLocaleTimeString()}
+                    `;
+                }, 2000);
+                
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 Refresh Sanctions Entities';
+            }
+        }
+
+        // Update sanctions progress display
+        function updateSanctionsProgress(percent, message, details) {
+            document.getElementById('sanctionsProgressFill').style.width = `${percent}%`;
+            document.getElementById('sanctionsProgressText').textContent = message;
+            document.getElementById('sanctionsProgressPercent').textContent = `${percent}%`;
+            document.getElementById('sanctionsProgressDetails').textContent = details;
+        }
+
+        // Load current sanctions entities status
+        async function loadSanctionsEntitiesStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/sanctions/status`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('currentSanctionsCount').textContent = 
-                        data.data.total_sanctions?.toLocaleString() || '-';
+                    const stats = data.statistics || {};
+                    const entityTypes = stats.entity_types || {};
+                    const riskLevels = stats.risk_levels || {};
+                    
+                    // Update display
+                    document.getElementById('currentEntitiesCount').textContent = 
+                        stats.total_entities?.toLocaleString() || '0';
+                    
+                    // Entity types tiles
+                    const entityTypesGrid = document.getElementById('entityTypesGrid');
+                    if (Object.keys(entityTypes).length > 0) {
+                        entityTypesGrid.innerHTML = Object.entries(entityTypes).map(([type, count]) => `
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center;">
+                                <div style="font-size: 18px; font-weight: 600; color: #1e293b;">${count.toLocaleString()}</div>
+                                <div style="font-size: 12px; color: #64748b; margin-top: 2px;">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
+                            </div>
+                        `).join('');
+                    } else {
+                        entityTypesGrid.innerHTML = '<div style="color: #64748b; text-align: center;">No data available</div>';
+                    }
+                    
+                    // Risk levels tiles
+                    const riskLevelsGrid = document.getElementById('riskLevelsGrid');
+                    if (Object.keys(riskLevels).length > 0) {
+                        riskLevelsGrid.innerHTML = Object.entries(riskLevels).map(([risk, count]) => {
+                            const riskColor = risk === 'HIGH' ? '#dc2626' : risk === 'MEDIUM' ? '#d97706' : risk === 'LOW' ? '#16a34a' : '#374151';
+                            return `
+                                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center;">
+                                    <div style="font-size: 18px; font-weight: 600; color: ${riskColor};">${count.toLocaleString()}</div>
+                                    <div style="font-size: 12px; color: #64748b; margin-top: 2px;">${risk}</div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        riskLevelsGrid.innerHTML = '<div style="color: #64748b; text-align: center;">No data available</div>';
+                    }
+                    
                     document.getElementById('lastUpdated').textContent = 
                         new Date().toLocaleDateString();
                 }
             } catch (error) {
-                console.error('Error loading sanctions status:', error);
+                console.error('Error loading sanctions entities status:', error);
+                document.getElementById('currentEntitiesCount').textContent = 'Error';
+                document.getElementById('entityTypesGrid').innerHTML = '<div style="color: #dc2626; text-align: center;">Error loading data</div>';
+                document.getElementById('riskLevelsGrid').innerHTML = '<div style="color: #dc2626; text-align: center;">Error loading data</div>';
             }
         }
+
 
         // Load current transaction status
         async function loadTransactionStatus() {

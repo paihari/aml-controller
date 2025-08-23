@@ -44,7 +44,7 @@ def populate_sanctions():
         
         print("🔄 Initializing sanctions loader...")
         db = AMLDatabase()
-        loader = SanctionsLoader(db)
+        loader = SanctionsLoader()
         
         print("📥 Loading OpenSanctions daily datasets...")
         result = loader.force_refresh_sanctions_data()

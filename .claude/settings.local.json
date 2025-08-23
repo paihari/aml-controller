@@ -8,7 +8,8 @@
       "Bash(source:*)",
       "Bash(python:*)",
       "Bash(pip install:*)",
-      "Bash(PORT=5001 python:*)"
+      "Bash(PORT=5001 python:*)",
+      "WebFetch(domain:www.opensanctions.org)"
     ],
     "deny": [],
     "ask": []

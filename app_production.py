@@ -55,7 +55,7 @@ def initialize_components():
         # Initialize other components
         aml_engine = DynamicAMLEngine(db)
         transaction_generator = TransactionGenerator(db)
-        sanctions_loader = SanctionsLoader(db)
+        sanctions_loader = SanctionsLoader()
         
         logger.info("All components initialized successfully")
         return True
@@ -71,8 +71,12 @@ def ensure_initial_data():
         
         # Load sanctions if none exist
         if stats.get('total_sanctions', 0) == 0:
-            logger.info("Loading initial sanctions data...")
-            sanctions_loader._load_fallback_sanctions()
+            logger.info("Loading initial sanctions data from OpenSanctions...")
+            try:
+                sanctions_loader.refresh_sanctions_data()
+            except Exception as e:
+                logger.error(f"Failed to load sanctions data: {e}")
+                logger.info("Note: Sanctions system requires Supabase connection.")
         
         # Generate transactions if none exist  
         if stats.get('total_transactions', 0) == 0:

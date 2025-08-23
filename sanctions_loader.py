@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Load sanctions data from OpenSanctions daily datasets and other sources
+Load sanctions data from OpenSanctions daily datasets
 
-Fallback hierarchy:
-1. Prefetched data stored in database (primary)
-2. Daily OpenSanctions datasets with date fallback (secondary)  
-3. Dummy data (last resort)
+Supabase-only architecture:
+- All sanctions data stored exclusively in Supabase
+- No local SQLite fallback or dummy data
+- Direct integration with OpenSanctions daily datasets
 
 Focused datasets:
 - Debarred Companies and Individuals (updated daily)
@@ -17,7 +17,6 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from database import AMLDatabase
 from supabase_sanctions import SupabaseSanctionsDB
 import os
 from dotenv import load_dotenv
@@ -26,20 +25,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class SanctionsLoader:
-    def __init__(self, db: AMLDatabase):
-        self.db = db  # Keep local DB for transactions/alerts
-        
-        # Initialize Supabase for sanctions if enabled
-        self.use_supabase = os.getenv('USE_SUPABASE_FOR_SANCTIONS', 'false').lower() == 'true'
-        self.supabase_db = None
-        
-        if self.use_supabase:
-            try:
-                self.supabase_db = SupabaseSanctionsDB()
-                print("✅ Supabase sanctions database initialized")
-            except Exception as e:
-                print(f"⚠️ Failed to initialize Supabase, falling back to local DB: {e}")
-                self.use_supabase = False
+    def __init__(self):
+        """Initialize Supabase-only sanctions loader"""
+        # Initialize Supabase sanctions database (required)
+        try:
+            self.supabase_db = SupabaseSanctionsDB()
+            print("✅ Supabase sanctions database initialized")
+        except Exception as e:
+            raise Exception(f"❌ Failed to initialize Supabase sanctions database: {e}")
         # OpenSanctions daily datasets base URL
         self.opensanctions_base = "https://data.opensanctions.org/datasets"
         
@@ -72,10 +65,14 @@ class SanctionsLoader:
     
     def load_daily_dataset(self, dataset_key: str, target_date: datetime = None) -> Dict:
         """Load a specific dataset with date fallback"""
+        from aml_logger import AMLLogger
+        logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
+        
         if target_date is None:
             target_date = datetime.now()
             
         dataset_name = self.datasets[dataset_key]['name']
+        logger.info(f"Loading {dataset_name} dataset for {dataset_key}")
         print(f"🔄 Loading {dataset_name} dataset...")
         
         # Try multiple dates going backwards
@@ -85,27 +82,42 @@ class SanctionsLoader:
             
             try:
                 print(f"📅 Attempting {dataset_name} for {attempt_date.strftime('%Y-%m-%d')}")
-                response = requests.get(dataset_url, timeout=30)
+                logger.info(f"Requesting URL: {dataset_url}")
+                response = requests.get(dataset_url, timeout=120)  # Increased timeout to 2 minutes
+                logger.info(f"HTTP response: {response.status_code}")
                 
                 if response.status_code == 200:
                     # Parse NDJSON format (newline-delimited JSON)
                     entities = []
                     lines = response.text.strip().split('\n')
                     
+                    # Get current sanctions count to use as offset
+                    current_sanctions_count = 0
+                    if self.use_supabase and self.supabase_db:
+                        current_sanctions_count = self.supabase_db.get_sanctions_count()
+                        print(f"🔍 DEBUG: Current Supabase sanctions count: {current_sanctions_count}")
+                    
+                    # Calculate offset per dataset (divide total by number of datasets)
+                    dataset_count = len(self.datasets)
+                    offset_per_dataset = current_sanctions_count // dataset_count
+                    print(f"🔍 DEBUG: Using offset {offset_per_dataset} for {dataset_key}")
+                    
+                    # Apply offset to skip existing records
+                    if offset_per_dataset > 0 and offset_per_dataset < len(lines):
+                        lines = lines[offset_per_dataset:]
+                        print(f"📦 Applied offset: skipped first {offset_per_dataset} records")
+                    
                     # Apply batch limit if set (prefer per-dataset limit, then global limit)
                     per_dataset_limit = getattr(self, '_dataset_batch_limit', None)
                     global_batch_limit = getattr(self, '_batch_limit', None)
-                    
-                    print(f"🔍 DEBUG: {dataset_key} - per_dataset_limit={per_dataset_limit}, global_batch_limit={global_batch_limit}")
-                    print(f"🔍 DEBUG: {dataset_key} - total lines available: {len(lines)}")
                     
                     effective_limit = per_dataset_limit or global_batch_limit
                     if effective_limit:
                         original_line_count = len(lines)
                         lines = lines[:effective_limit]
                         print(f"📦 Applying batch limit: {effective_limit} records for {dataset_key} (reduced from {original_line_count} to {len(lines)})")
-                    else:
-                        print(f"⚠️ DEBUG: No effective limit for {dataset_key} - processing all {len(lines)} lines")
+                    
+                    print(f"🔍 DEBUG: Final processing count for {dataset_key}: {len(lines)} records")
                     
                     for line in lines:
                         if line.strip():
@@ -119,11 +131,20 @@ class SanctionsLoader:
                     print(f"📥 Retrieved {len(entities)} entities from {dataset_name} ({attempt_date.strftime('%Y-%m-%d')})")
                     
                     # Process entities for database storage
+                    from aml_logger import AMLLogger
+                    logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
+                    
                     processed_entities = []
+                    logger.info(f"Processing {len(entities)} raw entities for {dataset_key}")
+                    
                     for entity in entities:
                         processed_entity = self._process_senzing_entity(entity, dataset_key, attempt_date)
                         if processed_entity:  # Only add valid entities
                             processed_entities.append(processed_entity)
+                        else:
+                            logger.info(f"Entity filtered out during processing - no valid data")
+                    
+                    logger.info(f"Processed entities: {len(entities)} raw -> {len(processed_entities)} valid")
                     
                     return {
                         'success': True,
@@ -143,9 +164,18 @@ class SanctionsLoader:
     
     def _process_senzing_entity(self, entity: Dict, dataset_key: str, load_date: datetime) -> Dict:
         """Process raw entity data from OpenSanctions Senzing format"""
+        from aml_logger import AMLLogger
+        logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
+        
         try:
+            # Debug: Log the actual entity structure for first few entities
+            entity_keys = list(entity.keys())
+            logger.info(f"Entity keys: {entity_keys[:10]}...")  # First 10 keys
+            
             # Get primary name from NAMES array
             names = entity.get('NAMES', [])
+            logger.info(f"Names array length: {len(names)}, first few: {names[:2] if names else 'empty'}")
+            
             primary_name = ''
             for name_obj in names:
                 if name_obj.get('NAME_TYPE') == 'PRIMARY':
@@ -156,7 +186,10 @@ class SanctionsLoader:
                 # Fallback to first available name
                 primary_name = names[0].get('NAME_FULL', '')
             
+            logger.info(f"Final primary_name: '{primary_name}'")
+            
             if not primary_name:
+                logger.info(f"Skipping entity - no primary name found")
                 return None  # Skip entities without names
             
             # Get countries/nationalities
@@ -261,125 +294,45 @@ class SanctionsLoader:
         """Force refresh of sanctions data (bypasses prefetched data check)"""
         return self.refresh_sanctions_data(force_refresh=True)
     
-    def _load_fallback_sanctions(self) -> Dict:
-        """Load hardcoded sanctions data as fallback"""
-        print("🔄 Loading fallback sanctions data...")
-        
-        fallback_entities = [
-            {
-                'id': 'fallback-001',
-                'caption': 'Vladimir Vladimirovich PUTIN',
-                'schema': 'Person',
-                'countries': ['ru'],
-                'topics': ['sanction'],
-                'datasets': ['us_ofac_sdn'],
-                'first_seen': '2022-02-26',
-                'last_seen': '2024-12-01',
-                'properties': {
-                    'programs': ['RUSSIA-EO14024'],
-                    'source': 'FALLBACK'
-                }
-            },
-            {
-                'id': 'fallback-002',
-                'caption': 'Dmitri Kozlov',
-                'schema': 'Person',
-                'countries': ['ru'],
-                'topics': ['sanction'],
-                'datasets': ['us_ofac_sdn'],
-                'first_seen': '2022-03-15',
-                'last_seen': '2024-12-01',
-                'properties': {
-                    'programs': ['RUSSIA-EO14024'],
-                    'source': 'FALLBACK'
-                }
-            },
-            {
-                'id': 'fallback-003',
-                'caption': 'Hassan Bin Rashid',
-                'schema': 'Person',
-                'countries': ['ir'],
-                'topics': ['sanction'],
-                'datasets': ['us_ofac_sdn'],
-                'first_seen': '2020-01-15',
-                'last_seen': '2024-12-01',
-                'properties': {
-                    'programs': ['IRAN'],
-                    'source': 'FALLBACK'
-                }
-            },
-            {
-                'id': 'fallback-004',
-                'caption': 'Anna Volkov',
-                'schema': 'Person',
-                'countries': ['ru'],
-                'topics': ['sanction'],
-                'datasets': ['us_ofac_sdn'],
-                'first_seen': '2022-04-08',
-                'last_seen': '2024-12-01',
-                'properties': {
-                    'programs': ['RUSSIA-EO14024'],
-                    'source': 'FALLBACK'
-                }
-            },
-            {
-                'id': 'fallback-005',
-                'caption': 'Kim Jong Un',
-                'schema': 'Person',
-                'countries': ['kp'],
-                'topics': ['sanction'],
-                'datasets': ['us_ofac_sdn'],
-                'first_seen': '2018-08-15',
-                'last_seen': '2024-12-01',
-                'properties': {
-                    'programs': ['NORTH_KOREA'],
-                    'source': 'FALLBACK'
-                }
-            }
-        ]
-        
-        # Store in database
-        self.db.add_sanctions_data(fallback_entities)
-        
-        return {
-            'success': True,
-            'count': len(fallback_entities),
-            'source': 'FALLBACK'
-        }
     
     def has_recent_sanctions_data(self, max_age_days: int = 1) -> bool:
-        """Check if database has recent sanctions data"""
+        """Check if Supabase has recent sanctions data"""
         try:
-            if self.use_supabase and self.supabase_db:
-                sanctions_count = self.supabase_db.get_sanctions_count()
-            else:
-                stats = self.db.get_statistics()
-                sanctions_count = stats.get('total_sanctions', 0)
+            sanctions_count = self.supabase_db.get_sanctions_count()
             
             if sanctions_count == 0:
                 return False
                 
-            # For now, we'll assume data exists if count > 5 (more than just dummy data)
-            # TODO: Add last_updated field to database schema
-            return sanctions_count > 5
-        except:
+            # Return True if we have any sanctions data
+            # TODO: Add last_updated field to database schema for time-based checks
+            return sanctions_count > 0
+        except Exception as e:
+            print(f"⚠️ Error checking sanctions count: {e}")
             return False
     
     def load_all_datasets(self) -> Dict:
         """Load all configured datasets"""
+        from aml_logger import AMLLogger
+        logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
+        
+        logger.info("ENTRY load_all_datasets()")
+        
         results = {}
         all_entities = []
         total_loaded = 0
         
         print("🔄 Loading OpenSanctions daily datasets...")
+        logger.info(f"Configured datasets count: {len(self.datasets)}")
         
         # Apply batch limit distribution if set
         batch_limit = getattr(self, '_batch_limit', None)
+        logger.info(f"Batch limit attribute: {batch_limit}")
         print(f"🔍 DEBUG: _batch_limit attribute = {batch_limit}")
         if batch_limit:
             # Distribute batch limit across datasets
             dataset_count = len(self.datasets)
             per_dataset_limit = max(1, batch_limit // dataset_count)
+            logger.info(f"Distributing batch limit: {batch_limit} total → {per_dataset_limit} per dataset ({dataset_count} datasets)")
             print(f"📦 Distributing batch limit: {batch_limit} total → {per_dataset_limit} records per dataset ({dataset_count} datasets)")
             
             # Temporarily set per-dataset limit
@@ -391,13 +344,22 @@ class SanctionsLoader:
         
         # Load each dataset
         for dataset_key in self.datasets.keys():
-            dataset_result = self.load_daily_dataset(dataset_key)
-            results[dataset_key] = dataset_result
-            
-            if dataset_result.get('success'):
-                entities = dataset_result.get('entities', [])
-                all_entities.extend(entities)
-                total_loaded += dataset_result.get('count', 0)
+            logger.info(f"Processing dataset: {dataset_key}")
+            try:
+                dataset_result = self.load_daily_dataset(dataset_key)
+                logger.info(f"Dataset {dataset_key} result: success={dataset_result.get('success')}, count={dataset_result.get('count', 0)}")
+                results[dataset_key] = dataset_result
+                
+                if dataset_result.get('success'):
+                    entities = dataset_result.get('entities', [])
+                    logger.info(f"Dataset {dataset_key} returned {len(entities)} entities")
+                    all_entities.extend(entities)
+                    # Don't add to total_loaded yet - wait for successful storage
+                else:
+                    logger.info(f"Dataset {dataset_key} failed: {dataset_result.get('error', 'Unknown error')}")
+            except Exception as e:
+                logger.info(f"Exception loading dataset {dataset_key}: {str(e)}")
+                results[dataset_key] = {'success': False, 'error': str(e)}
         
         # Restore original per-dataset limit if it was set
         if batch_limit:
@@ -406,60 +368,97 @@ class SanctionsLoader:
             elif hasattr(self, '_dataset_batch_limit'):
                 delattr(self, '_dataset_batch_limit')
         
-        # Store all entities in database if any were loaded
+        # Store all entities in Supabase (required)
+        logger.info(f"About to store entities: all_entities count = {len(all_entities)}")
         if all_entities:
-            print(f"💾 Storing {len(all_entities)} entities in database...")
-            if self.use_supabase and self.supabase_db:
-                storage_result = self.supabase_db.add_sanctions_data(all_entities)
-                if not storage_result.get('success'):
-                    print(f"⚠️ Supabase storage failed, falling back to local DB")
-                    self.db.add_sanctions_data(all_entities)
-            else:
-                self.db.add_sanctions_data(all_entities)
+            logger.info(f"Storing {len(all_entities)} entities in Supabase")
+            print(f"💾 Storing {len(all_entities)} entities in Supabase...")
             
-        return {
+            logger.info(f"Calling supabase_db.add_sanctions_data() with {len(all_entities)} entities")
+            storage_result = self.supabase_db.add_sanctions_data(all_entities)
+            logger.info(f"Supabase storage result: {storage_result}")
+            
+            if not storage_result.get('success'):
+                error_msg = f"❌ Supabase storage failed: {storage_result.get('error', 'Unknown error')}"
+                print(error_msg)
+                logger.error(error_msg)
+                # Don't fall back - fail fast and let caller handle the error
+                return {
+                    'success': False,
+                    'total_count': 0,
+                    'datasets': results,
+                    'source': 'OpenSanctions_Daily',
+                    'error': storage_result.get('error', 'Supabase storage failed')
+                }
+            else:
+                stored_count = storage_result.get('count', len(all_entities))
+                print(f"✅ Successfully stored {stored_count} entities in Supabase")
+                logger.info(f"Successfully stored {stored_count} entities in Supabase")
+                total_loaded = stored_count  # Use actual stored count
+        else:
+            print(f"⚠️ DEBUG: No entities to store (all_entities is empty)")
+            logger.info("No entities to store - all_entities is empty")
+            
+        final_result = {
             'success': total_loaded > 0,
             'total_count': total_loaded,
             'datasets': results,
             'source': 'OpenSanctions_Daily'
         }
+        
+        logger.info(f"EXIT load_all_datasets() - success={final_result['success']}, total_count={final_result['total_count']}")
+        return final_result
     
     def refresh_sanctions_data(self, force_refresh: bool = False) -> Dict:
-        """Refresh sanctions data using proper fallback hierarchy"""
+        """Refresh sanctions data from OpenSanctions (Supabase-only)"""
+        from aml_logger import AMLLogger
+        logger = AMLLogger.get_logger('sanctions_refresh', 'sanctions')
+        
+        logger.info(f"ENTRY refresh_sanctions_data(force_refresh={force_refresh})")
         print("📥 Starting sanctions data refresh...")
         
-        # 1. Check if we have recent prefetched data (primary)
-        if not force_refresh and self.has_recent_sanctions_data():
-            print("✅ Using existing prefetched sanctions data")
-            stats = self.db.get_statistics()
-            return {
-                'success': True,
-                'count': stats.get('total_sanctions', 0),
-                'source': 'Database_Prefetched',
-                'message': 'Using existing data'
-            }
+        # Check if we should skip refresh (only if not forcing)
+        if not force_refresh:
+            has_recent_data = self.has_recent_sanctions_data()
+            logger.info(f"Has recent data check: {has_recent_data}")
+            
+            if has_recent_data:
+                logger.info("Using existing Supabase data - EARLY RETURN")
+                print("✅ Using existing sanctions data from Supabase")
+                count = self.supabase_db.get_sanctions_count()
+                return {
+                    'success': True,
+                    'count': count,
+                    'source': 'Supabase_Existing',
+                    'message': 'Using existing data'
+                }
         
-        # 2. Try to load fresh daily datasets (secondary)  
+        logger.info("Proceeding to load fresh datasets (force_refresh=True or no recent data)")
+        
+        # Load fresh daily datasets from OpenSanctions
+        logger.info("About to call load_all_datasets()")
         daily_result = self.load_all_datasets()
+        logger.info(f"load_all_datasets() returned: success={daily_result.get('success')}, count={daily_result.get('total_count', 0)}")
+        
         if daily_result.get('success'):
             print("✅ Successfully loaded fresh OpenSanctions datasets")
+            logger.info("Successfully loaded fresh datasets - RETURN")
             return daily_result
-        
-        # 3. Fall back to dummy data (last resort)
-        print("🔄 Falling back to dummy sanctions data...")
-        fallback_result = self._load_fallback_sanctions()
-        
-        return fallback_result
+        else:
+            # No fallback - return the error
+            error_msg = f"❌ Failed to load OpenSanctions datasets: {daily_result.get('error', 'Unknown error')}"
+            print(error_msg)
+            logger.error(error_msg)
+            return daily_result
 
 if __name__ == "__main__":
-    # Test sanctions loading
-    db = AMLDatabase()
-    loader = SanctionsLoader(db)
+    # Test sanctions loading (Supabase-only)
+    loader = SanctionsLoader()
     
     print("🚀 Starting sanctions data loading...")
     results = loader.refresh_sanctions_data()
     print(f"✅ Loading complete: {results}")
     
-    # Show statistics
-    stats = db.get_statistics()
-    print(f"📊 Database statistics: {stats}")
+    # Show Supabase statistics
+    count = loader.supabase_db.get_sanctions_count()
+    print(f"📊 Supabase sanctions count: {count}")

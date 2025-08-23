@@ -97,7 +97,7 @@ def populate_sanctions_data():
         
         # Initialize components
         db = AMLDatabase()
-        sanctions_loader = SanctionsLoader(db)
+        sanctions_loader = SanctionsLoader()
         
         # Force refresh to load fresh data
         print("📥 Loading OpenSanctions daily datasets...")

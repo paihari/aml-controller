@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import json
+from aml_logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +23,7 @@ class SupabaseSanctionsDB:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment")
         
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-        self.table_name = 'sanctions'
+        self.table_name = 'sanctions_entities'
         
         # Initialize table if needed
         self._ensure_table_exists()
@@ -38,28 +39,49 @@ class SupabaseSanctionsDB:
         try:
             # Clear existing data first (for fresh loads)
             print(f"🗑️ Clearing existing sanctions data...")
-            delete_result = self.supabase.table(self.table_name).delete().neq('id', '').execute()
+            # Fix: Use proper numeric comparison for bigint id field instead of empty string
+            delete_result = self.supabase.table(self.table_name).delete().gte('id', 1).execute()
             
             print(f"💾 Inserting {len(sanctions)} sanctions records to Supabase...")
             
-            # Prepare data for Supabase (convert arrays to JSON strings)
+            # Debug: Check what fields we're getting from the source data
+            if sanctions:
+                sample_sanction = sanctions[0]
+                print(f"🔍 DEBUG: Source sanction keys: {list(sample_sanction.keys())}")
+            
+            # Prepare data for Supabase - map to sanctions_entities schema
             processed_sanctions = []
             for sanction in sanctions:
+                # Clean and validate data to avoid bigint errors
                 processed_sanction = {
                     'entity_id': sanction.get('id', ''),
-                    'name': sanction.get('caption', ''),
-                    'name_normalized': self._normalize_name(sanction.get('caption', '')),
-                    'schema_type': sanction.get('schema', 'Person'),
-                    'countries': json.dumps(sanction.get('countries', [])),
-                    'topics': json.dumps(sanction.get('topics', [])),
-                    'datasets': json.dumps(sanction.get('datasets', [])),
-                    'first_seen': sanction.get('first_seen'),
-                    'last_seen': sanction.get('last_seen'),
-                    'properties': json.dumps(sanction.get('properties', {})),
-                    'data_source': sanction.get('properties', {}).get('source', 'Unknown'),
-                    'list_name': sanction.get('properties', {}).get('dataset', 'unknown'),
-                    'program': sanction.get('properties', {}).get('dataset', 'unknown')
+                    'entity_type': sanction.get('schema', 'Person'),
+                    'primary_name': sanction.get('caption', ''),
+                    'normalized_name': self._normalize_name(sanction.get('caption', '')),
+                    'search_names': sanction.get('aliases', []),
+                    'countries': sanction.get('countries', []),
+                    'risk_level': 'HIGH',  # Default risk level
+                    'is_active': True,
+                    'data_sources': sanction.get('datasets', []),
+                    'last_updated': sanction.get('last_seen'),
+                    'passport_numbers': [],
+                    'national_ids': [],
+                    'tax_numbers': [],
+                    'registration_numbers': [],
+                    'crypto_addresses': [],
+                    'vessel_imo': None,
+                    'aircraft_tail': None
                 }
+                
+                # Handle date fields - convert empty strings to None for proper date fields
+                if processed_sanction['last_updated'] == '':
+                    processed_sanction['last_updated'] = None
+                    
+                # CRITICAL: Remove 'id' field completely to let bigserial auto-increment handle it
+                # The error "invalid input syntax for type bigint" is caused by trying to insert 
+                # an empty string into the auto-increment id field
+                processed_sanction.pop('id', None)
+                
                 processed_sanctions.append(processed_sanction)
             
             # Insert in batches to avoid payload size limits
@@ -70,8 +92,19 @@ class SupabaseSanctionsDB:
                 batch = processed_sanctions[i:i + batch_size]
                 print(f"📤 Inserting batch {i//batch_size + 1}: {len(batch)} records")
                 
-                result = self.supabase.table(self.table_name).insert(batch).execute()
-                total_inserted += len(batch)
+                try:
+                    result = self.supabase.table(self.table_name).insert(batch).execute()
+                    total_inserted += len(batch)
+                except Exception as e:
+                    print(f"❌ Supabase insert error: {e}")
+                    if batch:
+                        sample_record = batch[0]
+                        print(f"🔍 Sample record keys: {list(sample_record.keys())}")
+                        print(f"🔍 Sample record values with empty strings:")
+                        for key, value in sample_record.items():
+                            if value == "":
+                                print(f"   - {key}: '{value}' (empty string)")
+                    raise e
                 
                 if i % (batch_size * 10) == 0:  # Progress update every 10 batches
                     print(f"✅ Progress: {total_inserted}/{len(processed_sanctions)} records inserted")
@@ -100,30 +133,26 @@ class SupabaseSanctionsDB:
             # Search using ilike for partial matching
             result = self.supabase.table(self.table_name)\
                 .select("*")\
-                .or_(f"name_normalized.ilike.%{normalized_name}%,name.ilike.%{name}%")\
+                .or_(f"normalized_name.ilike.%{normalized_name}%,primary_name.ilike.%{name}%")\
                 .limit(50)\
                 .execute()
             
-            # Convert JSON strings back to objects
+            # Convert to compatible format
             sanctions = []
             for row in result.data:
                 sanction = {
                     'id': len(sanctions) + 1,  # Sequential ID for compatibility
                     'entity_id': row['entity_id'],
-                    'name': row['name'],
-                    'name_normalized': row['name_normalized'],
-                    'schema': row['schema_type'],
-                    'countries': json.loads(row['countries']) if row['countries'] else [],
-                    'topics': json.loads(row['topics']) if row['topics'] else [],
-                    'datasets': json.loads(row['datasets']) if row['datasets'] else [],
-                    'first_seen': row['first_seen'],
-                    'last_seen': row['last_seen'],
-                    'properties': json.loads(row['properties']) if row['properties'] else {},
-                    'data_source': row['data_source'],
-                    'list_name': row['list_name'],
-                    'program': row['program'],
+                    'name': row['primary_name'],
+                    'name_normalized': row['normalized_name'],
+                    'schema': row['entity_type'],
+                    'countries': row['countries'] if row['countries'] else [],
+                    'datasets': row['data_sources'] if row['data_sources'] else [],
+                    'last_seen': row['last_updated'],
+                    'risk_level': row['risk_level'],
+                    'is_active': row['is_active'],
                     'created_at': row.get('created_at'),
-                    'country': json.loads(row['countries'])[0] if row['countries'] and json.loads(row['countries']) else None
+                    'country': row['countries'][0] if row['countries'] and len(row['countries']) > 0 else None
                 }
                 sanctions.append(sanction)
             
@@ -135,13 +164,29 @@ class SupabaseSanctionsDB:
     
     def get_sanctions_count(self) -> int:
         """Get total count of sanctions records"""
+        logger = AMLLogger.get_logger('supabase_count', 'supabase')
+        log_function_entry(logger, 'get_sanctions_count', table=self.table_name)
+        
         try:
+            logger.info(f"Executing count query on table: {self.table_name}")
+            # Use head request for count only (more efficient)
             result = self.supabase.table(self.table_name)\
-                .select("*", count="exact")\
+                .select("id", count="exact")\
+                .limit(1)\
                 .execute()
-            return result.count or 0
+            
+            count = result.count or 0
+            data_length = len(result.data) if result.data else 0
+            
+            AMLLogger.log_supabase_operation('COUNT_QUERY', self.table_name, True, f"count={count}")
+            logger.info(f"Supabase count query successful: count={count}, data_length={data_length}")
+            
+            log_function_exit(logger, 'get_sanctions_count', result=count)
+            return count
+            
         except Exception as e:
-            print(f"❌ Error getting sanctions count from Supabase: {e}")
+            AMLLogger.log_supabase_operation('COUNT_QUERY', self.table_name, False, f"error={str(e)}")
+            log_error_with_context(logger, e, 'get_sanctions_count', table=self.table_name)
             return 0
     
     def get_sanctions_statistics(self) -> Dict:
@@ -149,19 +194,19 @@ class SupabaseSanctionsDB:
         try:
             count = self.get_sanctions_count()
             
-            # Get dataset breakdown
+            # Get entity type breakdown
             result = self.supabase.table(self.table_name)\
-                .select("list_name")\
+                .select("entity_type")\
                 .execute()
             
-            datasets = {}
+            entity_types = {}
             for row in result.data:
-                dataset = row['list_name']
-                datasets[dataset] = datasets.get(dataset, 0) + 1
+                entity_type = row['entity_type']
+                entity_types[entity_type] = entity_types.get(entity_type, 0) + 1
             
             return {
                 'total_sanctions': count,
-                'datasets': datasets,
+                'entity_types': entity_types,
                 'source': 'Supabase'
             }
             
@@ -169,7 +214,7 @@ class SupabaseSanctionsDB:
             print(f"❌ Error getting sanctions statistics from Supabase: {e}")
             return {
                 'total_sanctions': 0,
-                'datasets': {},
+                'entity_types': {},
                 'source': 'Supabase_Error'
             }
     
