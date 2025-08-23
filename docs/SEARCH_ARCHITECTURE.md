@@ -241,11 +241,20 @@ async function performSearch() {
 ### Scaling Strategies
 
 #### 1. **Horizontal Database Scaling**
-```
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│ Primary DB   │    │ Read Replica │    │ Search Index │
-│ (Write/Read) │────│ (Read Only)  │────│ (ElasticSearch)│
-└──────────────┘    └──────────────┘    └──────────────┘
+
+```mermaid
+graph LR
+    A[Primary DB Write Read] --> B[Read Replica Read Only]
+    B --> C[Search Index ElasticSearch]
+    
+    A --> D[Application Layer]
+    B --> D
+    C --> D
+    
+    style A fill:#e8f5e8
+    style B fill:#fff8e1
+    style C fill:#fce4ec
+    style D fill:#e3f2fd
 ```
 
 #### 2. **Caching Layer**
