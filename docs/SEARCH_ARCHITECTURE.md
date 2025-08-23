@@ -123,6 +123,35 @@ def calculate_relevance(result, query):
 
 ## 🔍 Search Flow Diagram
 
+### Interactive Mermaid Diagram
+
+```mermaid
+graph TD
+    A[👤 User Input<br/>"John Smith"] --> B[🔧 Query Processor<br/>• Sanitization<br/>• Normalization<br/>• Type Detection]
+    B --> C{🎯 Router Logic<br/>Determines which<br/>databases to search}
+    
+    C --> D[💾 Transaction Database<br/>ILIKE Search<br/>205+ Records]
+    C --> E[🚨 AML Alerts Engine<br/>In-Memory Filter<br/>32 Active Alerts]
+    C --> F[⚖️ Sanctions Database<br/>Full-Text Search<br/>57,000+ Records]
+    
+    D --> G[📊 Result Merger<br/>• Deduplication<br/>• Relevance Scoring<br/>• Sorting]
+    E --> G
+    F --> G
+    
+    G --> H[✅ Final JSON Response<br/>{success: true,<br/>results: [...]}]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
+    style E fill:#fff8e1
+    style F fill:#fce4ec
+    style G fill:#f1f8e9
+    style H fill:#e3f2fd
+```
+
+### ASCII Diagram (Alternative View)
+
 ```
 ┌─────────────────┐
 │   User Input    │
