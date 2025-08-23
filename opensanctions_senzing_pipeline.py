@@ -334,11 +334,105 @@ class OpenSanctionsSenzingPipeline:
         
         # Clear existing data
         try:
-            self.logger.info("🗑️ Clearing existing sanctions data...")
-            self.supabase.table('sanctions_entities').delete().gte('id', 1).execute()
-            self.logger.info("✅ Existing data cleared")
+            self.logger.info("🗑️ Clearing existing sanctions data using TRUNCATE...")
+            
+            # Get current record count before clearing
+            try:
+                count_result = self.supabase.table('sanctions_entities').select('id', count='exact').limit(1).execute()
+                current_count = count_result.count or 0
+                self.logger.info(f"📊 Current records in table: {current_count:,}")
+            except Exception as count_error:
+                self.logger.warning(f"⚠️ Could not get current count: {count_error}")
+                current_count = "unknown"
+            
+            # Use TRUNCATE approach - this is much faster than DELETE for large tables
+            # TRUNCATE removes all rows and resets auto-increment counters
+            try:
+                # Method 1: Try direct TRUNCATE via SQL if available
+                import requests
+                headers = {
+                    'apikey': os.getenv('SUPABASE_ANON_KEY'),
+                    'Authorization': f'Bearer {os.getenv("SUPABASE_ANON_KEY")}',
+                    'Content-Type': 'application/json'
+                }
+                
+                # Try to use PostgREST to execute TRUNCATE
+                truncate_url = f"{os.getenv('SUPABASE_URL')}/rest/v1/rpc/truncate_table"
+                response = requests.post(truncate_url, json={'table_name': 'sanctions_entities'}, headers=headers, timeout=30)
+                
+                if response.status_code == 200:
+                    self.logger.info("✅ TRUNCATE via RPC succeeded")
+                else:
+                    raise Exception(f"RPC TRUNCATE failed: {response.status_code} - {response.text}")
+                    
+            except Exception as truncate_error:
+                self.logger.warning(f"⚠️ TRUNCATE RPC failed: {truncate_error}")
+                self.logger.info("🔄 Falling back to DELETE with chunking...")
+                
+                # Fallback: Delete in chunks using range-based approach
+                self.logger.info("🔄 Using range-based chunked deletion...")
+                deleted_total = 0
+                max_attempts = 50  # Prevent infinite loop
+                
+                for attempt in range(max_attempts):
+                    try:
+                        # Get a batch of IDs to delete (get the lowest IDs first)
+                        id_batch = self.supabase.table('sanctions_entities')\
+                            .select('id')\
+                            .order('id')\
+                            .limit(2000)\
+                            .execute()
+                        
+                        if not id_batch.data or len(id_batch.data) == 0:
+                            self.logger.info(f"✅ No more records to delete after {deleted_total:,} records")
+                            break
+                        
+                        # Extract the ID range for this batch
+                        ids_to_delete = [row['id'] for row in id_batch.data]
+                        min_id = min(ids_to_delete)
+                        max_id = max(ids_to_delete)
+                        
+                        # Delete this range
+                        delete_result = self.supabase.table('sanctions_entities')\
+                            .delete()\
+                            .gte('id', min_id)\
+                            .lte('id', max_id)\
+                            .execute()
+                        
+                        chunk_deleted = len(delete_result.data) if delete_result.data else len(ids_to_delete)
+                        deleted_total += chunk_deleted
+                        self.logger.info(f"🗑️ Deleted chunk {attempt + 1}: {chunk_deleted:,} records (IDs {min_id}-{max_id}, total: {deleted_total:,})")
+                        
+                        # Small delay to prevent overwhelming database
+                        time.sleep(0.2)
+                        
+                    except Exception as chunk_error:
+                        if "timeout" in str(chunk_error).lower() and attempt < max_attempts - 1:
+                            self.logger.warning(f"⚠️ Chunk {attempt + 1} timed out, continuing...")
+                            time.sleep(1)  # Longer delay on timeout
+                            continue
+                        else:
+                            self.logger.error(f"❌ Chunk deletion failed: {chunk_error}")
+                            raise chunk_error
+                
+                self.logger.info(f"✅ Chunked deletion completed: {deleted_total:,} records removed")
+            
+            # Verify table is empty
+            try:
+                verify_result = self.supabase.table('sanctions_entities').select('id', count='exact').limit(1).execute()
+                remaining_count = verify_result.count or 0
+                
+                if remaining_count == 0:
+                    self.logger.info("✅ Table successfully cleared - 0 records remaining")
+                else:
+                    self.logger.warning(f"⚠️ Table not fully cleared - {remaining_count:,} records still remain")
+                    
+            except Exception as verify_error:
+                self.logger.warning(f"⚠️ Could not verify table clearing: {verify_error}")
+                
         except Exception as e:
-            self.logger.warning(f"⚠️ Could not clear existing data: {e}")
+            self.logger.error(f"❌ Critical error during data clearing: {e}")
+            raise Exception(f"Failed to clear existing data: {e}. Cannot proceed with insertion.")
         
         # Insert in batches
         total_inserted = 0
