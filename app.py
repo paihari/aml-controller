@@ -234,7 +234,9 @@ def home():
     <body>
         <div class="container">
             <div class="brand">
-                <img src="/images/Brand.svg" alt="syntropAI Sentinel" />
+                <a href="/" style="display: inline-block; text-decoration: none;">
+                    <img src="/images/Brand.svg" alt="syntropAI Sentinel" style="cursor: pointer;" />
+                </a>
                 <div class="brand-text">syntropAI Sentinel</div>
             </div>
             <div class="subtitle">Real-time Anti-Money Laundering Detection Platform</div>
@@ -807,7 +809,9 @@ def render_health_html(health_data):
     <body>
         <div class="container">
             <div class="page-title">
-                <img src="/images/Brand.svg" alt="syntropAI" />
+                <a href="/" style="display: inline-block;">
+                    <img src="/images/Brand.svg" alt="syntropAI" style="cursor: pointer;" />
+                </a>
                 <div class="page-title-content">
                     <h1>{status_icon} AML System Health Check</h1>
                     <p>Comprehensive API Status & Service Testing</p>
