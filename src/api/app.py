@@ -15,7 +15,7 @@ from src.data.database import AMLDatabase
 from src.core.aml_engine import DynamicAMLEngine
 from src.core.transaction_generator import TransactionGenerator
 from src.core.sanctions_loader import SanctionsLoader
-from src.services.plane_integration import PlaneIntegration
+# Plane integration removed
 from dotenv import load_dotenv
 from src.utils.logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
 
@@ -328,7 +328,6 @@ try:
     aml_engine = DynamicAMLEngine(db)
     transaction_generator = TransactionGenerator(db)
     sanctions_loader = SanctionsLoader()
-    plane = PlaneIntegration()
     print("✅ AML components initialized successfully")
 except Exception as e:
     print(f"❌ Failed to initialize AML components: {e}")
@@ -337,7 +336,6 @@ except Exception as e:
     aml_engine = None
     transaction_generator = None
     sanctions_loader = None
-    plane = None
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -2015,9 +2013,7 @@ def process_pending_transactions():
                 'error': 'AML engine not initialized'
             }), 503
         
-        # Initialize Plane.so integration
-        from plane_integration import PlaneIntegration
-        plane = PlaneIntegration()
+        # Plane integration removed
         
         # Get all pending transactions using proper database abstraction
         pending_transactions = db.get_pending_transactions()
@@ -2038,7 +2034,6 @@ def process_pending_transactions():
         completed_count = 0
         failed_count = 0
         under_review_count = 0
-        plane_items_created = 0
         processing_results = []
         
         for i, tx in enumerate(pending_transactions, 1):
@@ -2068,13 +2063,7 @@ def process_pending_transactions():
                 
                 # Determine transaction outcome based on alerts
                 outcome, requires_manual_review = _determine_transaction_outcome(alerts)
-                plane_item = None
-                
-                # Handle manual review cases
-                if requires_manual_review and plane.is_configured():
-                    plane_item = _create_plane_work_item(plane, transaction_data, alerts)
-                    if plane_item:
-                        plane_items_created += 1
+                # Manual review cases (Plane integration removed)
                 
                 # Update transaction status using proper database abstraction
                 db.update_transaction_status(tx['transaction_id'], outcome)
@@ -2092,7 +2081,6 @@ def process_pending_transactions():
                     'transaction_id': tx['transaction_id'],
                     'status': outcome,
                     'alerts_generated': len(alerts),
-                    'plane_work_item': plane_item['work_item_id'] if plane_item else None,
                     'requires_manual_review': requires_manual_review
                 })
                 
@@ -2113,12 +2101,6 @@ def process_pending_transactions():
                 'completed': completed_count,
                 'failed': failed_count,
                 'under_review': under_review_count,
-                'plane_work_items_created': plane_items_created
-            },
-            'plane_integration': {
-                'configured': plane.is_configured(),
-                'workspace': plane.workspace_slug if plane.is_configured() else None,
-                'items_created': plane_items_created
             },
             'processing_details': processing_results,
             'timestamp': datetime.datetime.now().isoformat()
@@ -2164,59 +2146,7 @@ def _determine_transaction_outcome(alerts: List[Dict]) -> Tuple[str, bool]:
     else:
         return 'COMPLETED', False
 
-def _create_plane_work_item(plane: 'PlaneIntegration', transaction_data: Dict, alerts: List[Dict]) -> Optional[Dict]:
-    """Create appropriate Plane.so work item based on alert type"""
-    
-    # Find the highest priority alert
-    sanctions_alerts = [a for a in alerts if a.get('typology') == 'R1_SANCTIONS_MATCH']
-    geography_alerts = [a for a in alerts if a.get('typology') == 'R3_HIGH_RISK_CORRIDOR']
-    structuring_alerts = [a for a in alerts if a.get('typology') == 'R2_STRUCTURING']
-    
-    # Create work item based on most critical alert type
-    if sanctions_alerts:
-        # Sanctions match - highest priority
-        evidence = sanctions_alerts[0].get('evidence', {})
-        sanctions_match = {
-            'name': evidence.get('watchlist_name', 'Unknown'),
-            'match_confidence': evidence.get('match_confidence', 0),
-            'program': evidence.get('source', 'Unknown'),
-            'data_source': evidence.get('source', 'Unknown')
-        }
-        return plane.create_sanctions_match_item(transaction_data, sanctions_match)
-    
-    elif geography_alerts:
-        # High-risk geography
-        evidence = geography_alerts[0].get('evidence', {})
-        risk_details = {
-            'country_risk': evidence.get('country_risk', 'Unknown'),
-            'corridor_risk_score': evidence.get('corridor_risk_score', 0)
-        }
-        return plane.create_high_risk_geography_item(transaction_data, risk_details)
-    
-    elif structuring_alerts:
-        # Structuring pattern
-        evidence = structuring_alerts[0].get('evidence', {})
-        pattern_details = {
-            'transaction_count': evidence.get('transaction_count', 0),
-            'total_amount': evidence.get('total_amount', 0),
-            'pattern': evidence.get('pattern', 'Unknown'),
-            'date': evidence.get('date', 'Unknown')
-        }
-        return plane.create_structuring_pattern_item(transaction_data, pattern_details)
-    
-    else:
-        # Generic high-risk case
-        max_risk_alert = max(alerts, key=lambda x: x.get('risk_score', 0))
-        title = f"🚨 HIGH-RISK TRANSACTION: {transaction_data.get('transaction_id')}"
-        description = f"High-risk transaction detected with {len(alerts)} AML alerts requiring manual review."
-        
-        return plane.create_work_item(
-            title=title,
-            description=description,
-            transaction_data=transaction_data,
-            alert_data=alerts,
-            priority="high"
-        )
+# Plane integration functions removed
 
 def initialize_system():
     """Initialize AML system with error handling"""

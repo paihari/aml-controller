@@ -7,9 +7,4 @@ gunicorn
 supabase
 python-dotenv
 
-# Plane.so SDK (commented out due to pydantic compatibility issues)
-# plane-sdk==0.1.6
-# To enable Plane SDK:
-#   1. pip install plane-sdk==0.1.6
-#   2. pip install pydantic==1.10.22 --force-reinstall
-#   3. Set SDK_AVAILABLE = True in plane_integration.py
+# Plane.so integration removed from this version
