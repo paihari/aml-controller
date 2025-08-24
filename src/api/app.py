@@ -281,12 +281,16 @@ def home():
 @app.route('/dashboard/<path:filename>')
 def dashboard_files(filename):
     """Serve dashboard files"""
-    return send_from_directory('dashboard', filename)
+    # Path relative to project root (two levels up from src/api/)
+    dashboard_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'dashboard')
+    return send_from_directory(dashboard_path, filename)
 
 @app.route('/images/<path:filename>')
 def image_files(filename):
     """Serve image files"""
-    return send_from_directory('images', filename)
+    # Path relative to project root (two levels up from src/api/)
+    images_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'images')
+    return send_from_directory(images_path, filename)
 
 @app.route('/api/initialize', methods=['GET'])
 def initialize_data():
