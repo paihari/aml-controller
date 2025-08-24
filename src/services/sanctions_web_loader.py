@@ -8,6 +8,10 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, Any
+
+# Add project root to path to find pipelines module
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, project_root)
 from pipelines.opensanctions_senzing_pipeline import OpenSanctionsSenzingPipeline
 from src.utils.logger import AMLLogger
 

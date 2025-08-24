@@ -13,7 +13,12 @@ from datetime import datetime, date
 from typing import Dict, List, Optional, Any
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from aml_logger import AMLLogger
+import sys
+import os
+# Add project root to Python path to import from src/
+project_root = os.path.dirname(os.path.dirname(__file__))
+sys.path.insert(0, project_root)
+from src.utils.logger import AMLLogger
 
 class OpenSanctionsAMLPipeline:
     """Pipeline to fetch and process OpenSanctions Consolidated Sanctions data"""

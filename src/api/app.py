@@ -1621,7 +1621,7 @@ def generate_demo_sanctions():
 def refresh_sanctions():
     """Refresh sanctions data from OpenSanctions Consolidated Sanctions dataset"""
     try:
-        from sanctions_web_loader import refresh_sanctions_web
+        from src.services.sanctions_web_loader import refresh_sanctions_web
         
         # Get request parameters
         params = request.get_json() or {}
@@ -1785,7 +1785,7 @@ def _refresh_sanctions_via_datasets(dataset: str, batch_size: int):
 def get_sanctions_status():
     """Get current sanctions data status and statistics"""
     try:
-        from sanctions_web_loader import get_sanctions_status
+        from src.services.sanctions_web_loader import get_sanctions_status
         
         result = get_sanctions_status()
         
