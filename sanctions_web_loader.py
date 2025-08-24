@@ -8,7 +8,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, Any
-from opensanctions_senzing_pipeline import OpenSanctionsSenzingPipeline
+from pipelines.opensanctions_senzing_pipeline import OpenSanctionsSenzingPipeline
 from aml_logger import AMLLogger
 
 class SanctionsWebLoader:
