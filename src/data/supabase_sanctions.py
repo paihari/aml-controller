@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import json
-from aml_logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
+from src.utils.logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
 
 # Load environment variables
 load_dotenv()

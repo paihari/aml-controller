@@ -9,8 +9,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import datetime
 import json
-from database import AMLDatabase
-from dynamic_aml_engine import DynamicAMLEngine
+from src.data.database import AMLDatabase
+from src.core.aml_engine import DynamicAMLEngine
 from transaction_generator import TransactionGenerator
 from sanctions_loader import SanctionsLoader
 

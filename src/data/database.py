@@ -16,7 +16,7 @@ load_dotenv()
 
 # Try to import Supabase AML client
 try:
-    from supabase_aml import SupabaseAMLDB
+    from src.data.supabase_aml import SupabaseAMLDB
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False

@@ -9,7 +9,7 @@ import sys
 from datetime import datetime
 from typing import Dict, Any
 from pipelines.opensanctions_senzing_pipeline import OpenSanctionsSenzingPipeline
-from aml_logger import AMLLogger
+from src.utils.logger import AMLLogger
 
 class SanctionsWebLoader:
     """Web-accessible interface for sanctions data loading"""

@@ -9,7 +9,7 @@ import datetime
 from faker import Faker
 from typing import Dict, List
 import uuid
-from database import AMLDatabase
+from src.data.database import AMLDatabase
 
 class TransactionGenerator:
     def __init__(self, db: AMLDatabase):
@@ -143,7 +143,7 @@ class TransactionGenerator:
         # Try to get real sanctions data from Supabase
         try:
             # Import here to avoid circular import
-            from supabase_sanctions import SupabaseSanctionsDB
+            from src.data.supabase_sanctions import SupabaseSanctionsDB
             supabase_db = SupabaseSanctionsDB()
             
             # Get random sanctions entities from the 57,842 available

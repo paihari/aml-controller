@@ -17,7 +17,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from supabase_sanctions import SupabaseSanctionsDB
+from src.data.supabase_sanctions import SupabaseSanctionsDB
 import os
 from dotenv import load_dotenv
 
@@ -65,7 +65,7 @@ class SanctionsLoader:
     
     def load_daily_dataset(self, dataset_key: str, target_date: datetime = None) -> Dict:
         """Load a specific dataset with date fallback"""
-        from aml_logger import AMLLogger
+        from src.utils.logger import AMLLogger
         logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
         
         if target_date is None:
@@ -131,7 +131,7 @@ class SanctionsLoader:
                     print(f"📥 Retrieved {len(entities)} entities from {dataset_name} ({attempt_date.strftime('%Y-%m-%d')})")
                     
                     # Process entities for database storage
-                    from aml_logger import AMLLogger
+                    from src.utils.logger import AMLLogger
                     logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
                     
                     processed_entities = []
@@ -164,7 +164,7 @@ class SanctionsLoader:
     
     def _process_senzing_entity(self, entity: Dict, dataset_key: str, load_date: datetime) -> Dict:
         """Process raw entity data from OpenSanctions Senzing format"""
-        from aml_logger import AMLLogger
+        from src.utils.logger import AMLLogger
         logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
         
         try:
@@ -312,7 +312,7 @@ class SanctionsLoader:
     
     def load_all_datasets(self) -> Dict:
         """Load all configured datasets"""
-        from aml_logger import AMLLogger
+        from src.utils.logger import AMLLogger
         logger = AMLLogger.get_logger('sanctions_loader', 'sanctions')
         
         logger.info("ENTRY load_all_datasets()")
@@ -411,7 +411,7 @@ class SanctionsLoader:
     
     def refresh_sanctions_data(self, force_refresh: bool = False) -> Dict:
         """Refresh sanctions data from OpenSanctions (Supabase-only)"""
-        from aml_logger import AMLLogger
+        from src.utils.logger import AMLLogger
         logger = AMLLogger.get_logger('sanctions_refresh', 'sanctions')
         
         logger.info(f"ENTRY refresh_sanctions_data(force_refresh={force_refresh})")

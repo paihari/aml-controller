@@ -6,12 +6,12 @@ Dynamic AML Detection Engine with real-time processing
 import datetime
 import uuid
 from typing import Dict, List, Tuple
-from database import AMLDatabase
-from supabase_sanctions import SupabaseSanctionsDB
+from src.data.database import AMLDatabase
+from src.data.supabase_sanctions import SupabaseSanctionsDB
 import re
 import os
 from dotenv import load_dotenv
-from aml_logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
+from src.utils.logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
 
 # Load environment variables
 load_dotenv()
