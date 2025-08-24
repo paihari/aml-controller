@@ -132,23 +132,48 @@ graph TB
 ### Level 4: Code Structure
 
 ```
-dynamic-aml-system/
-├── 🌐 Web Layer
-│   ├── app.py                      # Flask API Server
+aml-controller/
+├── 🌐 Application Layer
+│   ├── app.py                      # Flask API Server (Development)
+│   ├── start.sh                    # System Startup Script
 │   └── dashboard/
-│       └── dynamic.html            # Real-time Dashboard
-├── 🔍 Core Engine
-│   ├── dynamic_aml_engine.py       # Main AML Detection Engine
-│   ├── database.py                 # Database Operations
-│   ├── sanctions_loader.py         # External Data Integration
-│   └── transaction_generator.py    # Dynamic Data Generation
-├── 🗄️ Data Layer
-│   └── aml_database.db            # SQLite Database
+│       └── dynamic.html            # Real-time Dashboard UI
+├── 🔍 Core Engine (src/)
+│   ├── api/
+│   │   ├── app.py                  # Main Flask API
+│   │   └── app_production.py       # Production API Server
+│   ├── core/
+│   │   ├── dynamic_aml_engine.py   # AML Detection Engine
+│   │   ├── sanctions_loader.py     # OpenSanctions Integration
+│   │   └── transaction_generator.py # Test Data Generation
+│   ├── data/
+│   │   └── database.py             # Database Operations
+│   └── utils/
+│       ├── logger.py               # Application Logging
+│       └── redis_cache.py          # Redis Caching System
+├── 📊 Infrastructure
+│   ├── docker-compose.yml          # Redis + App Services
+│   ├── Dockerfile                  # Container Configuration
+│   └── monitor_redis.py            # Cache Monitoring Tool
+├── 🧪 Testing (tests/)
+│   └── test_cache_monitoring.py    # Redis Cache Tests
+├── 🛠️ Setup Scripts (setup/)
+│   ├── setup_supabase.py           # Database Initialization
+│   ├── setup_supabase_aml.py       # AML Tables Setup
+│   ├── supabase_schema.sql         # Database Schema
+│   └── *.sh                        # Deployment Scripts
+├── 📚 Documentation (docs/)
+│   ├── DEVELOPMENT_NOTES.md        # Development History
+│   ├── OPENSANCTIONS_C4_DIAGRAM.md # System Architecture
+│   ├── OPENSANCTIONS_DESIGN.md     # Technical Design
+│   └── SEARCH_ARCHITECTURE.md     # Search System Design
+├── 🗄️ Data Storage
+│   ├── aml_database.db             # SQLite Fallback Database
+│   └── logs/                       # Application Logs
 └── 🚀 Deployment
     ├── requirements.txt            # Python Dependencies
-    ├── Dockerfile                  # Container Configuration
-    ├── render.yaml                 # Render Deployment Config
-    └── fly.toml                    # Fly.io Deployment Config
+    ├── .env.example                # Environment Configuration
+    └── pipelines/                  # CI/CD Configurations
 ```
 
 ---
