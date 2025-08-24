@@ -6,5 +6,6 @@ faker
 gunicorn
 supabase
 python-dotenv
+redis
 
 # Plane.so integration removed from this version

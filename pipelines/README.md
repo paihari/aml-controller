@@ -1,6 +1,8 @@
 # Pipeline Scripts
 
-This directory contains data processing pipeline scripts used for setup and maintenance of the AML Controller.
+This directory contains **operational scripts** for data processing, setup, and maintenance of the AML Controller. These are standalone utilities separate from the core application code in `/src/`.
+
+> **Note**: These are operational/maintenance scripts, not core application modules. They are run independently for data setup and system maintenance, while the main application logic resides in `/src/`.
 
 ## 📄 **Scripts Overview**
 
@@ -41,6 +43,8 @@ Before running any pipeline:
 
 ## ⚠️ **Important Notes**
 
+- These are **operational/maintenance scripts**, not core application modules
+- Core application code lives in `/src/` (API, data access, services, utilities)
 - These scripts are typically used **once during setup** or for **maintenance**
 - They are **not required** for normal AML Controller operation
 - The main application (`app.py`) handles real-time processing
