@@ -15,7 +15,7 @@ services:
     build: .
     container_name: aml-app
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - FLASK_ENV=development

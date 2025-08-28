@@ -308,11 +308,20 @@ class EnterpriseLogger:
     def _create_console_handler(self) -> logging.Handler:
         """Create console handler"""
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.WARNING)  # Only warnings and errors to console
         
-        # Simple format for console
-        formatter = logging.Formatter('%(levelname)s | %(name)s | %(message)s')
-        handler.setFormatter(formatter)
+        # For production/Render deployment, log everything to console for dashboard visibility
+        # For development, only warnings and errors
+        if os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER'):
+            handler.setLevel(self.LOG_LEVELS[self.config['log_level']])  # All configured logs
+        else:
+            handler.setLevel(logging.WARNING)  # Only warnings and errors
+        
+        # Use JSON format for production console output, simple format for development
+        if self.config['log_format'] == 'json' and (os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER')):
+            handler.setFormatter(EnterpriseFormatter())
+        else:
+            formatter = logging.Formatter('%(levelname)s | %(name)s | %(message)s')
+            handler.setFormatter(formatter)
         
         return handler
     

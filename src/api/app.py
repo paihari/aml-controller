@@ -17,10 +17,25 @@ from src.core.transaction_generator import TransactionGenerator
 from src.core.sanctions_loader import SanctionsLoader
 # Plane integration removed
 from dotenv import load_dotenv
-from src.utils.logger import AMLLogger, log_function_entry, log_function_exit, log_error_with_context
+
+# Enterprise Logging Integration
+from src.utils.enterprise_logger import get_logger, correlation_context, log_function_calls
+from src.utils.log_config import get_api_logger, get_aml_logger, get_database_logger
+from src.middleware.logging_middleware import LoggingMiddleware
+
+# Load environment variables first
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# Initialize Enterprise Logging Middleware
+logging_middleware = LoggingMiddleware(app)
+
+# Get loggers for different components
+api_logger = get_api_logger('main')
+app_logger = get_aml_logger('flask_app')
+db_logger = get_database_logger('main')
 
 # OpenSanctions Integration Functions
 def normalize_name(name: str) -> str:
@@ -2148,50 +2163,133 @@ def _determine_transaction_outcome(alerts: List[Dict]) -> Tuple[str, bool]:
 
 # Plane integration functions removed
 
+@log_function_calls('APPLICATION', 'startup')
 def initialize_system():
     """Initialize AML system with error handling"""
-    print("🚀 Starting AML Dynamic API Server...")
-    
-    if not db or not sanctions_loader or not transaction_generator or not aml_engine:
-        print("⚠️  Core components not initialized, skipping data initialization")
-        return
-    
-    # Initialize sanctions data on startup
-    print("📥 Loading initial sanctions data...")
-    try:
-        sanctions_loader.refresh_sanctions_data()
-        print("✅ Sanctions data loaded successfully")
-    except Exception as e:
-        print(f"❌ Error: Could not load sanctions data: {e}")
-        print("💡 Note: Sanctions system requires Supabase connection. Please check configuration.")
-    
-    # Generate some initial data for testing
-    print("🎲 Generating initial test data...")
-    try:
-        test_transactions = transaction_generator.generate_mixed_batch(5)
-        transaction_generator.store_transactions(test_transactions)
+    with correlation_context('system_startup') as corr_id:
+        app_logger.info(
+            "AML Dynamic API Server starting up",
+            extra_fields={
+                'event_type': 'system_startup',
+                'correlation_id': corr_id,
+                'components': ['database', 'sanctions_loader', 'transaction_generator', 'aml_engine']
+            }
+        )
         
-        # Process through AML engine to generate alerts
-        aml_engine.process_batch(test_transactions)
-        print("✅ Initial test data generated")
-    except Exception as e:
-        print(f"⚠️  Warning: Could not generate test data: {e}")
-    
-    # Show statistics
-    try:
-        stats = db.get_statistics()
-        print(f"📊 Database Statistics: {stats}")
-    except Exception as e:
-        print(f"⚠️  Warning: Could not get statistics: {e}")
+        if not db or not sanctions_loader or not transaction_generator or not aml_engine:
+            app_logger.warning(
+                "Core components not initialized, skipping data initialization",
+                extra_fields={
+                    'event_type': 'initialization_warning',
+                    'missing_components': [
+                        comp for comp, obj in [
+                            ('database', db),
+                            ('sanctions_loader', sanctions_loader),
+                            ('transaction_generator', transaction_generator),
+                            ('aml_engine', aml_engine)
+                        ] if not obj
+                    ]
+                }
+            )
+            return
+        
+        # Initialize sanctions data on startup
+        app_logger.info("Loading initial sanctions data", extra_fields={'event_type': 'sanctions_init'})
+        try:
+            sanctions_loader.refresh_sanctions_data()
+            app_logger.info(
+                "Sanctions data loaded successfully",
+                extra_fields={
+                    'event_type': 'sanctions_loaded',
+                    'success': True
+                }
+            )
+        except Exception as e:
+            app_logger.error(
+                "Could not load sanctions data",
+                extra_fields={
+                    'event_type': 'sanctions_error',
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'success': False
+                }
+            )
+        
+        # Generate some initial data for testing
+        app_logger.info("Generating initial test data", extra_fields={'event_type': 'test_data_init'})
+        try:
+            test_transactions = transaction_generator.generate_mixed_batch(5)
+            transaction_generator.store_transactions(test_transactions)
+            
+            # Process through AML engine to generate alerts
+            results = aml_engine.process_batch(test_transactions)
+            app_logger.info(
+                "Initial test data generated successfully",
+                extra_fields={
+                    'event_type': 'test_data_generated',
+                    'transaction_count': len(test_transactions),
+                    'alerts_generated': results.get('alert_count', 0),
+                    'success': True
+                }
+            )
+        except Exception as e:
+            app_logger.warning(
+                "Could not generate test data",
+                extra_fields={
+                    'event_type': 'test_data_error',
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'success': False
+                }
+            )
+        
+        # Show statistics
+        try:
+            stats = db.get_statistics()
+            app_logger.info(
+                "System statistics retrieved",
+                extra_fields={
+                    'event_type': 'system_statistics',
+                    'statistics': stats,
+                    'success': True
+                }
+            )
+        except Exception as e:
+            app_logger.warning(
+                "Could not retrieve system statistics",
+                extra_fields={
+                    'event_type': 'statistics_error',
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'success': False
+                }
+            )
 
 if __name__ == '__main__':
     # Initialize system with error handling
     try:
         initialize_system()
     except Exception as e:
-        print(f"⚠️  System initialization error: {e}")
-        print("🚀 Starting server anyway...")
+        app_logger.error(
+            "System initialization error",
+            extra_fields={
+                'event_type': 'initialization_failure',
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'fallback_mode': True
+            }
+        )
     
     port = int(os.environ.get('PORT', 5000))
-    print(f"🌐 API Server starting on http://localhost:{port}")
+    app_logger.info(
+        "AML API Server starting",
+        extra_fields={
+            'event_type': 'server_startup',
+            'host': '0.0.0.0',
+            'port': port,
+            'debug_mode': False,
+            'environment': os.environ.get('FLASK_ENV', 'production')
+        }
+    )
+    
     app.run(debug=False, host='0.0.0.0', port=port)
