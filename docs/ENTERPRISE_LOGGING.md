@@ -241,6 +241,94 @@ grep '"event_type": "database_operation"' logs/database.log |\
 jq -r 'select(.success==true) | .duration_ms'
 ```
 
+## 🌐 Render Platform Integration
+
+### Making Logs Visible in Render
+
+The enterprise logging system is optimized for cloud deployment platforms like Render. Here's how to ensure maximum log visibility:
+
+#### **Environment Configuration for Render**
+
+```bash
+# Set these environment variables in Render dashboard:
+RENDER=true                    # Enables production console logging
+LOG_LEVEL=INFO                 # Shows INFO and above in dashboard
+LOG_FORMAT=json               # Structured logs for better parsing
+LOG_TO_CONSOLE=true           # Essential for Render log visibility
+FLASK_ENV=production          # Activates production logging mode
+```
+
+#### **Automatic Render Detection**
+
+The logging system automatically detects Render environment:
+
+```python
+# Console handler automatically configured for Render
+if os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER'):
+    handler.setLevel(self.LOG_LEVELS[self.config['log_level']])  # All logs visible
+else:
+    handler.setLevel(logging.WARNING)  # Local development - warnings only
+```
+
+#### **Viewing Logs in Render Dashboard**
+
+1. **Access Logs**: Navigate to your service → "Logs" tab
+2. **Filter Options**: Use timestamp, log level, and text search
+3. **JSON Parsing**: Render automatically parses JSON log structure
+4. **Real-time Updates**: Logs stream in real-time during processing
+
+#### **Render Log Features**
+
+| Feature | Capability | Retention |
+|---------|------------|----------|
+| **Log Filtering** | By time, level, instance | 7-30 days (plan dependent) |
+| **Search** | Full-text with wildcards | All retained logs |
+| **JSON Parsing** | Automatic structure detection | Real-time |
+| **Download** | Export log segments | Available |
+| **Request Tracing** | Rndr-Id header correlation | Per request |
+
+#### **Log Streaming to External Services**
+
+Render supports streaming logs to external services:
+
+```bash
+# Example: Stream to Papertrail
+# Configure in Render dashboard under "Log Streams"
+# Destination: syslog-compatible endpoint
+# Rate limit: 6,000 log lines per minute per service instance
+```
+
+#### **Production Logging Best Practices for Render**
+
+```python
+# Structured logging optimized for Render visibility
+logger.info(
+    "Transaction processed",
+    extra_fields={
+        'transaction_id': 'TXN_12345',
+        'amount': 50000,
+        'status': 'completed',
+        'render_instance': os.getenv('RENDER_INSTANCE_ID', 'unknown'),
+        'render_service': os.getenv('RENDER_SERVICE_NAME', 'aml-controller')
+    }
+)
+```
+
+#### **Monitoring Production Logs**
+
+```python
+# Use correlation IDs to trace requests across Render instances
+with correlation_context() as corr_id:
+    logger.info(
+        "Processing AML alert",
+        extra_fields={
+            'alert_id': alert_id,
+            'correlation_id': corr_id,
+            'render_deployment': os.getenv('RENDER_GIT_COMMIT', 'unknown')[:7]
+        }
+    )
+```
+
 ## 🚨 Integration with External Systems
 
 ### ELK Stack (Elasticsearch, Logstash, Kibana)
@@ -307,6 +395,35 @@ index = aml_controller
 | **Memory Overhead** | <5MB | Efficient buffering |
 | **Disk I/O Impact** | <2% | Async file writing |
 | **CPU Overhead** | <1% | Optimized formatting |
+
+## ☁️ Cloud Platform Optimization
+
+### Platform-Specific Configurations
+
+| Platform | Environment Variable | Log Visibility | Features |
+|----------|---------------------|----------------|----------|
+| **Render** | `RENDER=true` | Console + Dashboard | JSON parsing, filtering, streaming |
+| **Heroku** | `HEROKU=true` | Console + LogDrain | Structured logs, external streaming |
+| **Railway** | `RAILWAY=true` | Console + Dashboard | Real-time logs, download |
+| **Vercel** | `VERCEL=true` | Function logs | Request-scoped logging |
+
+### Cloud-Native Logging Pattern
+
+```python
+# Detect cloud platform and optimize accordingly
+if os.getenv('RENDER'):
+    # Render: All logs to console for dashboard visibility
+    LOG_TO_CONSOLE = True
+    LOG_FORMAT = 'json'
+elif os.getenv('HEROKU'):
+    # Heroku: Structured logs for LogDrain
+    LOG_TO_CONSOLE = True
+    LOG_FORMAT = 'json'
+else:
+    # Local development: File-based logging
+    LOG_TO_FILE = True
+    LOG_FORMAT = 'text'
+```
 
 ## 🔄 Best Practices
 

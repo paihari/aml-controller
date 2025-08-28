@@ -299,6 +299,9 @@ http://localhost:5000/dashboard/dynamic.html
 http://localhost:5000/api/health
 http://localhost:5000/api/statistics
 http://localhost:5000/api/alerts
+
+# Note: If using Docker, the app runs on port 5001:
+http://localhost:5001/dashboard/dynamic.html
 ```
 
 ---
@@ -713,7 +716,9 @@ CMD ["python", "app.py"]
 ```bash
 # Build and run container
 docker build -t dynamic-aml-system .
-docker run -p 5000:5000 dynamic-aml-system
+docker run -p 5001:5000 dynamic-aml-system
+
+# Access at http://localhost:5001
 ```
 
 ---

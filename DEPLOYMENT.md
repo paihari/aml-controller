@@ -109,8 +109,9 @@ docker build -t dynamic-aml .
 
 # Run container
 docker run -p 8080:5000 dynamic-aml
-
-# Access at http://localhost:8080
+# Or use the configured port mapping:
+docker-compose up
+# Access at http://localhost:5001 (via docker-compose)
 ```
 
 ## 🔧 Environment Configuration
