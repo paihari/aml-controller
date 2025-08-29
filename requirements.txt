@@ -8,4 +8,11 @@ supabase
 python-dotenv
 redis
 
+# Authentication dependencies
+authlib
+flask-session
+flask-talisman
+flask-limiter
+pyjwt
+
 # Plane.so integration removed from this version

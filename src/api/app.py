@@ -23,14 +23,31 @@ from src.utils.enterprise_logger import get_logger, correlation_context, log_fun
 from src.utils.log_config import get_api_logger, get_aml_logger, get_database_logger
 from src.middleware.logging_middleware import LoggingMiddleware
 
+# Authentication Integration
+from src.auth import AuthManager, AuthMiddleware, require_auth, require_roles
+from flask_session import Session
+
 # Load environment variables first
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
+# Configure Flask app for authentication
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-change-in-production')
+app.config['SESSION_TYPE'] = 'filesystem'  # Use filesystem sessions for now
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+
+# Initialize Flask-Session for server-side sessions
+Session(app)
+
 # Initialize Enterprise Logging Middleware
 logging_middleware = LoggingMiddleware(app)
+
+# Initialize Authentication System
+auth_manager = AuthManager(app)
+auth_middleware = AuthMiddleware(app, auth_manager)
 
 # Get loggers for different components
 api_logger = get_api_logger('main')
@@ -294,6 +311,7 @@ def home():
     '''
 
 @app.route('/dashboard/<path:filename>')
+@require_auth
 def dashboard_files(filename):
     """Serve dashboard files"""
     # Path relative to project root (two levels up from src/api/)
@@ -1427,6 +1445,7 @@ def get_statistics():
         }), 500
 
 @app.route('/api/alerts', methods=['GET'])
+@require_auth
 def get_alerts():
     """Get active alerts"""
     try:
@@ -1446,6 +1465,7 @@ def get_alerts():
         }), 500
 
 @app.route('/api/transactions', methods=['GET'])
+@require_auth
 def get_transactions():
     """Get recent transactions with optional status filtering"""
     try:
@@ -1489,6 +1509,7 @@ def get_transactions():
         }), 500
 
 @app.route('/api/transactions', methods=['POST'])
+@require_auth
 def process_transaction():
     """Process a single transaction"""
     try:
@@ -1631,6 +1652,7 @@ def generate_demo_sanctions():
         }), 500
 
 @app.route('/api/sanctions/refresh', methods=['POST'])
+@require_auth
 def refresh_sanctions():
     """Refresh sanctions data from OpenSanctions Consolidated Sanctions dataset"""
     try:
@@ -1861,6 +1883,7 @@ def search_sanctions():
         }), 500
 
 @app.route('/api/dashboard/data', methods=['GET'])
+@require_auth
 def get_dashboard_data():
     """Get all data needed for dashboard"""
     try:
@@ -1923,6 +1946,7 @@ def update_alert(alert_id):
         }), 500
 
 @app.route('/api/transactions/delete', methods=['POST'])
+@require_auth  
 def delete_transactions():
     """Delete transactions by transaction_ids"""
     try:
@@ -2162,6 +2186,398 @@ def _determine_transaction_outcome(alerts: List[Dict]) -> Tuple[str, bool]:
         return 'COMPLETED', False
 
 # Plane integration functions removed
+
+# ==========================================
+# AUTHENTICATION ROUTES
+# ==========================================
+
+@app.route('/auth/login')
+def auth_login():
+    """Show login page with available OAuth providers"""
+    available_providers = auth_manager.get_available_providers()
+    
+    # Simple provider selection page
+    html = f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Login - AML Controller</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background-color: #faf7f2; 
+                color: #2d2d2d; 
+                line-height: 1.6;
+                padding: 40px 20px;
+            }}
+            .container {{ max-width: 600px; margin: 0 auto; text-align: center; }}
+            .brand {{ margin-bottom: 40px; }}
+            .brand img {{ height: 120px; border: 2px solid #000000; }}
+            .brand-text {{ font-size: 28px; font-weight: 600; color: #2d2d2d; margin-top: 15px; }}
+            .login-box {{ 
+                background: #ffffff; 
+                border: 1px solid #e8e1d6; 
+                border-radius: 12px; 
+                padding: 40px; 
+                margin-bottom: 20px;
+            }}
+            .provider-btn {{ 
+                display: block;
+                width: 100%;
+                padding: 16px 24px;
+                margin: 16px 0;
+                background: #ffffff;
+                border: 2px solid #e8e1d6;
+                border-radius: 8px;
+                text-decoration: none;
+                color: #2d2d2d;
+                font-size: 16px;
+                font-weight: 500;
+                transition: all 0.2s ease;
+            }}
+            .provider-btn:hover {{ 
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+                transform: translateY(-2px); 
+                border-color: #2563eb;
+            }}
+            .provider-btn.google {{ border-color: #4285f4; }}
+            .provider-btn.github {{ border-color: #333; }}
+            .provider-btn.microsoft {{ border-color: #0078d4; }}
+            .provider-btn.oracle {{ border-color: #f80000; }}
+            .back-link {{ margin-top: 30px; }}
+            .back-link a {{ color: #2563eb; text-decoration: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="brand">
+                <img src="/images/Brand.svg" alt="syntropAI Sentinel" />
+                <div class="brand-text">syntropAI Sentinel</div>
+            </div>
+            
+            <div class="login-box">
+                <h2 style="margin-bottom: 30px;">Choose Login Method</h2>
+                
+                {_render_provider_buttons(available_providers)}
+                
+                {f'<p style="color: #666; margin-top: 20px;">Available providers: {len(available_providers)}</p>' if available_providers else '<p style="color: #f56565;">No OAuth providers configured</p>'}
+            </div>
+            
+            <div class="back-link">
+                <a href="/">← Back to Dashboard</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    return html
+
+def _render_provider_buttons(providers):
+    """Render OAuth provider buttons"""
+    if not providers:
+        return '<p style="color: #f56565;">No OAuth providers are configured. Please check your environment variables.</p>'
+    
+    provider_info = {
+        'google': ('🚀 Sign in with Google', 'google'),
+        'github': ('🐙 Sign in with GitHub', 'github'), 
+        'microsoft': ('🏢 Sign in with Microsoft', 'microsoft'),
+        'oracle': ('☁️ Sign in with Oracle Cloud', 'oracle')
+    }
+    
+    buttons_html = ""
+    for provider in providers:
+        if provider in provider_info:
+            label, css_class = provider_info[provider]
+            buttons_html += f'''
+                <a href="/auth/login/{provider}" class="provider-btn {css_class}">
+                    {label}
+                </a>
+            '''
+    
+    return buttons_html
+
+@app.route('/auth/login/<provider>')
+def auth_login_provider(provider):
+    """Initiate OAuth login with specific provider"""
+    try:
+        # Get OAuth provider client
+        oauth_client = auth_manager.get_provider(provider)
+        if not oauth_client:
+            return jsonify({
+                'success': False,
+                'error': f'Provider {provider} not configured or not available'
+            }), 400
+        
+        # Create redirect URI for this provider
+        redirect_uri = f"{request.host_url.rstrip('/')}/auth/callback/{provider}"
+        
+        # Initiate OAuth flow
+        return oauth_client.authorize_redirect(redirect_uri)
+        
+    except Exception as e:
+        auth_manager.log_auth_event(
+            'OAUTH_INIT_FAILED',
+            False,
+            provider=provider,
+            error_message=str(e),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+        
+        return jsonify({
+            'success': False,
+            'error': f'Failed to initiate login with {provider}: {str(e)}'
+        }), 500
+
+@app.route('/auth/callback/<provider>')
+def auth_callback_provider(provider):
+    """Handle OAuth callback from provider"""
+    try:
+        # Get OAuth provider client
+        oauth_client = auth_manager.get_provider(provider)
+        if not oauth_client:
+            return jsonify({
+                'success': False,
+                'error': f'Provider {provider} not configured'
+            }), 400
+        
+        # Exchange authorization code for token
+        token = oauth_client.authorize_access_token()
+        
+        # Get user info from provider
+        if provider == 'github':
+            # GitHub requires separate API call for user info
+            user_info = oauth_client.get('user', token=token).json()
+            # Get user email (GitHub may not include it in user info)
+            emails = oauth_client.get('user/emails', token=token).json()
+            if emails and not user_info.get('email'):
+                # Find primary email
+                primary_email = next((email['email'] for email in emails if email['primary']), emails[0]['email'] if emails else None)
+                user_info['email'] = primary_email
+        elif provider == 'google':
+            # For Google, get user info from Google's userinfo endpoint
+            user_info = oauth_client.get('https://www.googleapis.com/oauth2/v2/userinfo', token=token).json()
+        else:
+            # For Microsoft, Oracle - try userinfo or parse token
+            user_info = token.get('userinfo') or oauth_client.parse_id_token(token)
+        
+        if not user_info:
+            raise Exception(f"Could not get user information from {provider}")
+        
+        # Create or update user in database
+        user = auth_manager.create_or_update_user(provider, user_info)
+        
+        # Log in the user (create session)
+        if auth_middleware.login_user(user):
+            # Log successful authentication
+            auth_manager.log_auth_event(
+                'USER_AUTHENTICATED',
+                True,
+                provider=provider,
+                user_id=user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            
+            # Redirect to dashboard
+            return f'''
+            <html>
+            <head>
+                <title>Login Successful</title>
+                <meta http-equiv="refresh" content="2;url=/">
+                <style>
+                    body {{ 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        background-color: #faf7f2; 
+                        display: flex; 
+                        justify-content: center; 
+                        align-items: center; 
+                        height: 100vh; 
+                        margin: 0; 
+                    }}
+                    .success-box {{
+                        background: white;
+                        padding: 40px;
+                        border-radius: 12px;
+                        text-align: center;
+                        border: 1px solid #e8e1d6;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="success-box">
+                    <h2>✅ Login Successful!</h2>
+                    <p>Welcome, {user.name}!</p>
+                    <p>Redirecting to dashboard...</p>
+                    <a href="/">Continue to Dashboard</a>
+                </div>
+            </body>
+            </html>
+            '''
+        else:
+            raise Exception("Failed to create user session")
+            
+    except Exception as e:
+        # Log authentication failure
+        auth_manager.log_auth_event(
+            'USER_AUTH_FAILED',
+            False,
+            provider=provider,
+            error_message=str(e),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+        
+        return f'''
+        <html>
+        <head>
+            <title>Login Failed</title>
+            <style>
+                body {{ 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background-color: #faf7f2; 
+                    display: flex; 
+                    justify-content: center; 
+                    align-items: center; 
+                    height: 100vh; 
+                    margin: 0; 
+                }}
+                .error-box {{
+                    background: white;
+                    padding: 40px;
+                    border-radius: 12px;
+                    text-align: center;
+                    border: 1px solid #fecaca;
+                    background-color: #fef2f2;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="error-box">
+                <h2>❌ Login Failed</h2>
+                <p>Authentication with {provider} failed.</p>
+                <p>Error: {str(e)}</p>
+                <a href="/auth/login">← Try Again</a>
+            </div>
+        </body>
+        </html>
+        ''', 500
+
+@app.route('/api/auth/user', methods=['GET'])
+@require_auth
+def get_current_user():
+    """Get current authenticated user information"""
+    try:
+        user = auth_middleware.get_current_user()
+        if user:
+            return jsonify({
+                'success': True,
+                'user': {
+                    'id': user.id,
+                    'name': user.name,
+                    'email': user.email,
+                    'avatar_url': user.avatar_url,
+                    'provider': user.provider,
+                    'role': user.role
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'User not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/auth/logout', methods=['GET', 'POST'])
+def auth_logout():
+    """Log out current user"""
+    user = auth_middleware.get_current_user()
+    
+    # Log out the user
+    auth_middleware.logout_user()
+    
+    # Log the logout event
+    if user:
+        auth_manager.log_auth_event(
+            'USER_LOGOUT',
+            True,
+            provider=user.provider,
+            user_id=user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+    
+    # Return logout confirmation
+    return f'''
+    <html>
+    <head>
+        <title>Logged Out</title>
+        <meta http-equiv="refresh" content="3;url=/">
+        <style>
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background-color: #faf7f2; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                height: 100vh; 
+                margin: 0; 
+            }}
+            .logout-box {{
+                background: white;
+                padding: 40px;
+                border-radius: 12px;
+                text-align: center;
+                border: 1px solid #e8e1d6;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="logout-box">
+            <h2>👋 Logged Out Successfully</h2>
+            <p>{"Thank you, " + user.name + "!" if user else "Thank you!"}</p>
+            <p>Redirecting to home...</p>
+            <a href="/">Return to Dashboard</a>
+        </div>
+    </body>
+    </html>
+    '''
+
+@app.route('/auth/profile')
+@require_auth
+def auth_profile():
+    """Show current user profile (requires authentication)"""
+    from flask import g
+    user = g.current_user
+    
+    return jsonify({
+        'success': True,
+        'user': {
+            'id': user.id,
+            'email': user.email,
+            'name': user.name,
+            'provider': user.provider,
+            'role': user.role,
+            'avatar_url': user.avatar_url,
+            'last_login': user.last_login.isoformat() if user.last_login else None,
+            'is_active': user.is_active
+        },
+        'session': {
+            'authenticated': True,
+            'provider': user.provider
+        }
+    })
+
+# ==========================================
+# END AUTHENTICATION ROUTES
+# ==========================================
 
 @log_function_calls('APPLICATION', 'startup')
 def initialize_system():
