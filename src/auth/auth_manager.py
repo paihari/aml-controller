@@ -307,7 +307,7 @@ class AuthManager:
                     'email': normalized_info['email'],
                     'name': normalized_info['name'],
                     'avatar_url': normalized_info.get('avatar_url'),
-                    'role': 'user',
+                    'role': 'analyst',
                     'is_active': True,
                     'created_at': current_time,
                     'updated_at': current_time,
@@ -374,10 +374,10 @@ class AuthManager:
                     normalized_info['email'],
                     normalized_info['name'],
                     normalized_info.get('avatar_url'),
-                    'user'  # Default role
+                    'analyst'  # Default role
                 ))
                 user_id = cursor.lastrowid
-                role = 'user'
+                role = 'analyst'
             
             conn.commit()
             
@@ -442,37 +442,49 @@ class AuthManager:
                 'avatar_url': user_info.get('avatar_url', user_info.get('picture'))
             }
     
-    def create_user_session(self, user: User, session_id: str, access_token: str = None) -> UserSession:
-        """Create user session in database"""
+    def create_user_session(self, user: User, session_id: str, access_token: str = None, 
+                           ip_address: str = None, user_agent: str = None) -> UserSession:
+        """Create user session in Supabase database"""
+        return self._create_user_session_supabase(user, session_id, access_token, ip_address, user_agent)
+    
+    def _create_user_session_supabase(self, user: User, session_id: str, access_token: str = None,
+                                     ip_address: str = None, user_agent: str = None) -> UserSession:
+        """Create user session in Supabase"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            
             # Set session expiration (24 hours default)
-            expires_at = datetime.now() + timedelta(hours=24)
+            expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
+            current_time = datetime.now().isoformat()
             
-            conn.execute('''
-                INSERT INTO user_sessions 
-                (user_id, session_id, access_token, expires_at, last_activity)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (user.id, session_id, access_token, expires_at))
+            session_data = {
+                'user_id': user.id,
+                'session_id': session_id,
+                'access_token': access_token,
+                'ip_address': ip_address,
+                'user_agent': user_agent,
+                'expires_at': expires_at,
+                'created_at': current_time,
+                'last_activity': current_time,
+                'is_active': True
+            }
             
-            conn.commit()
+            result = self.supabase.table('user_sessions').insert(session_data).execute()
+            session_record = result.data[0]
             
             return UserSession(
-                user_id=user.id,
-                session_id=session_id,
-                access_token=access_token,
-                expires_at=expires_at,
-                created_at=datetime.now(),
-                last_activity=datetime.now()
+                user_id=session_record['user_id'],
+                session_id=session_record['session_id'],
+                access_token=session_record['access_token'],
+                ip_address=session_record['ip_address'],
+                user_agent=session_record['user_agent'],
+                expires_at=datetime.fromisoformat(session_record['expires_at'].replace('Z', '+00:00')),
+                created_at=datetime.fromisoformat(session_record['created_at'].replace('Z', '+00:00')),
+                last_activity=datetime.fromisoformat(session_record['last_activity'].replace('Z', '+00:00'))
             )
             
         except Exception as e:
-            print(f"❌ Error creating user session: {e}")
+            print(f"❌ Error creating user session in Supabase: {e}")
             raise
-        finally:
-            if conn:
-                conn.close()
+    
     
     def log_auth_event(self, event_type: str, success: bool, provider: str = None, 
                       user_id: int = None, error_message: str = None, **kwargs):

@@ -16,7 +16,7 @@ class User:
     email: str
     name: str
     avatar_url: Optional[str] = None
-    role: str = 'user'  # 'user', 'admin', 'auditor'
+    role: str = 'analyst'  # 'analyst', 'admin', 'viewer', 'compliance_officer'
     last_login: Optional[datetime] = None
     created_at: Optional[datetime] = None
     is_active: bool = True
@@ -46,7 +46,7 @@ class User:
             email=data['email'],
             name=data['name'],
             avatar_url=data.get('avatar_url'),
-            role=data.get('role', 'user'),
+            role=data.get('role', 'analyst'),
             last_login=datetime.fromisoformat(data['last_login']) if data.get('last_login') else None,
             created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
             is_active=data.get('is_active', True)
@@ -68,6 +68,8 @@ class UserSession:
     session_id: str
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
     expires_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None

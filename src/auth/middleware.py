@@ -273,10 +273,20 @@ class AuthMiddleware:
             
             # Create session record in database
             if self.auth_manager:
-                self.auth_manager.create_user_session(
-                    user=user,
-                    session_id=session['session_id']
-                )
+                try:
+                    # Get IP address and user agent from request
+                    ip_address = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR'))
+                    user_agent = request.headers.get('User-Agent')
+                    
+                    self.auth_manager.create_user_session(
+                        user=user,
+                        session_id=session['session_id'],
+                        ip_address=ip_address,
+                        user_agent=user_agent
+                    )
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not create database session record: {e}")
+                    # Continue with login even if session creation fails
             
             # Log successful login
             self._log_auth_event('USER_LOGIN', True, user=user)
