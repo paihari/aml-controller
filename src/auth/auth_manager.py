@@ -394,3 +394,57 @@ class AuthManager:
         finally:
             if conn:
                 conn.close()
+    
+    def get_user_statistics(self) -> dict:
+        """Get user authentication statistics"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            
+            # Get total users
+            total_users = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            
+            # Get active users
+            active_users = conn.execute('SELECT COUNT(*) FROM users WHERE is_active = 1').fetchone()[0]
+            
+            # Get users by provider
+            provider_stats = conn.execute('''
+                SELECT provider, COUNT(*) as count 
+                FROM users 
+                GROUP BY provider
+            ''').fetchall()
+            
+            # Get recent logins (last 30 days)
+            recent_logins = conn.execute('''
+                SELECT COUNT(*) 
+                FROM users 
+                WHERE last_login >= datetime('now', '-30 days')
+            ''').fetchone()[0]
+            
+            # Get login events from audit log (last 30 days)
+            login_events = conn.execute('''
+                SELECT COUNT(*) 
+                FROM auth_audit_log 
+                WHERE event_type = 'USER_LOGIN' 
+                AND success = 1 
+                AND created_at >= datetime('now', '-30 days')
+            ''').fetchone()[0]
+            
+            conn.close()
+            
+            return {
+                'total_users': total_users,
+                'active_users': active_users,
+                'recent_logins_30d': recent_logins,
+                'login_events_30d': login_events,
+                'users_by_provider': {row[0]: row[1] for row in provider_stats}
+            }
+            
+        except Exception as e:
+            print(f"Error getting user statistics: {e}")
+            return {
+                'total_users': 0,
+                'active_users': 0,
+                'recent_logins_30d': 0,
+                'login_events_30d': 0,
+                'users_by_provider': {}
+            }

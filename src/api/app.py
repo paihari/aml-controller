@@ -1424,7 +1424,7 @@ def test_service_endpoint(endpoint):
 
 @app.route('/api/statistics', methods=['GET'])
 def get_statistics():
-    """Get system statistics"""
+    """Get system statistics including user data"""
     try:
         if not aml_engine:
             return jsonify({
@@ -1432,7 +1432,13 @@ def get_statistics():
                 'error': 'AML engine not initialized'
             }), 503
             
+        # Get AML engine statistics
         stats = aml_engine.get_alert_statistics()
+        
+        # Add user statistics
+        user_stats = auth_manager.get_user_statistics() if auth_manager else {}
+        stats.update(user_stats)
+        
         return jsonify({
             'success': True,
             'data': stats,
