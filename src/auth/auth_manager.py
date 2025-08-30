@@ -54,6 +54,10 @@ class AuthManager:
     def _register_providers(self):
         """Register OAuth2 providers with their configurations"""
         
+        # Debug: Print environment variable status
+        print(f"🔍 Debug: GOOGLE_CLIENT_ID = {os.getenv('GOOGLE_CLIENT_ID', 'NOT SET')}")
+        print(f"🔍 Debug: GOOGLE_CLIENT_SECRET = {'SET' if os.getenv('GOOGLE_CLIENT_SECRET') else 'NOT SET'}")
+        
         # Google OAuth2
         google_client_id = os.getenv('GOOGLE_CLIENT_ID')
         google_client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
@@ -71,6 +75,8 @@ class AuthManager:
                 }
             )
             print("✅ Google OAuth2 provider registered")
+        else:
+            print("❌ Google OAuth2 provider NOT registered - missing or invalid credentials")
         
         # GitHub OAuth2
         github_client_id = os.getenv('GITHUB_CLIENT_ID')
