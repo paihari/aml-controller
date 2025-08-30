@@ -17,3 +17,4 @@ node_modules/
 *.env
 azure-deployment.env
 azure-deployment-info.txt
+flask_session
