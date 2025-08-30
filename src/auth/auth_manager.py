@@ -16,6 +16,13 @@ from .models import User, UserSession
 # Load environment variables
 load_dotenv()
 
+# Import Supabase client
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+
 
 class AuthManager:
     """Manages OAuth2 authentication and user sessions"""
@@ -24,6 +31,24 @@ class AuthManager:
         self.app = app
         self.oauth = OAuth()
         self.db_path = os.getenv('LOCAL_DB_PATH', 'aml_database.db')
+        
+        # Initialize Supabase client for user data
+        self.use_supabase = SUPABASE_AVAILABLE and os.getenv('SUPABASE_URL') and os.getenv('SUPABASE_ANON_KEY')
+        self.supabase = None
+        
+        if self.use_supabase:
+            try:
+                self.supabase = create_client(
+                    os.getenv('SUPABASE_URL'),
+                    os.getenv('SUPABASE_ANON_KEY')
+                )
+                print("✅ Using Supabase for user authentication storage")
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Supabase for auth, falling back to SQLite: {e}")
+                self.use_supabase = False
+        
+        if not self.use_supabase:
+            print("✅ Using SQLite for user authentication storage")
         
         if app is not None:
             self.init_app(app)
@@ -163,7 +188,21 @@ class AuthManager:
         return providers
     
     def _init_user_tables(self):
-        """Initialize user management tables in SQLite database"""
+        """Initialize user management tables"""
+        if self.use_supabase and self.supabase:
+            # For Supabase, check if tables exist
+            try:
+                result = self.supabase.table('users').select('id').limit(1).execute()
+                print("✅ Supabase user authentication tables verified")
+                return
+            except Exception as e:
+                print(f"⚠️ Supabase user tables may not exist: {e}")
+                print("📝 Creating user tables in Supabase...")
+                # Note: In practice, these tables should be created via Supabase dashboard or SQL
+                # For now, we'll fall back to SQLite if Supabase tables don't exist
+                self.use_supabase = False
+        
+        # Use SQLite as fallback
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -227,12 +266,80 @@ class AuthManager:
     
     def create_or_update_user(self, provider: str, user_info: Dict) -> User:
         """Create or update user from OAuth provider info"""
+        # Normalize user info based on provider
+        normalized_info = self._normalize_user_info(provider, user_info)
+        
+        if self.use_supabase and self.supabase:
+            return self._create_or_update_user_supabase(provider, normalized_info)
+        else:
+            return self._create_or_update_user_sqlite(provider, normalized_info)
+    
+    def _create_or_update_user_supabase(self, provider: str, normalized_info: Dict) -> User:
+        """Create or update user in Supabase"""
+        try:
+            # Check if user exists
+            existing_user = self.supabase.table('users').select('*').eq(
+                'provider', provider
+            ).eq('provider_user_id', normalized_info['provider_user_id']).execute()
+            
+            current_time = datetime.now().isoformat()
+            
+            if existing_user.data:
+                # Update existing user
+                user_data = {
+                    'email': normalized_info['email'],
+                    'name': normalized_info['name'],
+                    'avatar_url': normalized_info.get('avatar_url'),
+                    'last_login': current_time,
+                    'updated_at': current_time
+                }
+                
+                result = self.supabase.table('users').update(user_data).eq(
+                    'id', existing_user.data[0]['id']
+                ).execute()
+                
+                user_record = result.data[0]
+            else:
+                # Create new user
+                user_data = {
+                    'provider': provider,
+                    'provider_user_id': normalized_info['provider_user_id'],
+                    'email': normalized_info['email'],
+                    'name': normalized_info['name'],
+                    'avatar_url': normalized_info.get('avatar_url'),
+                    'role': 'user',
+                    'is_active': True,
+                    'created_at': current_time,
+                    'updated_at': current_time,
+                    'last_login': current_time
+                }
+                
+                result = self.supabase.table('users').insert(user_data).execute()
+                user_record = result.data[0]
+            
+            # Convert to User object
+            return User(
+                id=user_record['id'],
+                provider=user_record['provider'],
+                provider_user_id=user_record['provider_user_id'],
+                email=user_record['email'],
+                name=user_record['name'],
+                avatar_url=user_record['avatar_url'],
+                role=user_record['role'],
+                last_login=datetime.fromisoformat(user_record['last_login'].replace('Z', '+00:00')) if user_record['last_login'] else None,
+                created_at=datetime.fromisoformat(user_record['created_at'].replace('Z', '+00:00')) if user_record['created_at'] else None,
+                is_active=user_record['is_active']
+            )
+            
+        except Exception as e:
+            print(f"❌ Error creating/updating user in Supabase: {e}")
+            raise
+    
+    def _create_or_update_user_sqlite(self, provider: str, normalized_info: Dict) -> User:
+        """Create or update user in SQLite (fallback)"""
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
-            
-            # Normalize user info based on provider
-            normalized_info = self._normalize_user_info(provider, user_info)
             
             # Check if user exists
             existing_user = conn.execute('''
@@ -290,7 +397,7 @@ class AuthManager:
             return user
             
         except Exception as e:
-            print(f"❌ Error creating/updating user: {e}")
+            print(f"❌ Error creating/updating user in SQLite: {e}")
             raise
         finally:
             if conn:
@@ -397,6 +504,67 @@ class AuthManager:
     
     def get_user_statistics(self) -> dict:
         """Get user authentication statistics"""
+        if self.use_supabase and self.supabase:
+            return self._get_user_statistics_supabase()
+        else:
+            return self._get_user_statistics_sqlite()
+    
+    def _get_user_statistics_supabase(self) -> dict:
+        """Get user statistics from Supabase"""
+        try:
+            # Get total users
+            total_users_result = self.supabase.table('users').select('id', count='exact').execute()
+            total_users = total_users_result.count or 0
+            
+            # Get active users
+            active_users_result = self.supabase.table('users').select('id', count='exact').eq('is_active', True).execute()
+            active_users = active_users_result.count or 0
+            
+            # Get users by provider
+            provider_stats_result = self.supabase.rpc('get_users_by_provider').execute()
+            users_by_provider = {}
+            if provider_stats_result.data:
+                for row in provider_stats_result.data:
+                    users_by_provider[row['provider']] = row['count']
+            
+            # If RPC doesn't exist, fall back to regular query
+            if not users_by_provider:
+                all_users = self.supabase.table('users').select('provider').execute()
+                from collections import Counter
+                provider_counts = Counter([user['provider'] for user in all_users.data])
+                users_by_provider = dict(provider_counts)
+            
+            # Get recent logins (last 30 days)
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+            recent_logins_result = self.supabase.table('users').select('id', count='exact').gte('last_login', thirty_days_ago).execute()
+            recent_logins = recent_logins_result.count or 0
+            
+            # Get login events from audit log (last 30 days)
+            login_events_result = self.supabase.table('auth_audit_log').select('id', count='exact').eq(
+                'event_type', 'USER_LOGIN'
+            ).eq('success', True).gte('created_at', thirty_days_ago).execute()
+            login_events = login_events_result.count or 0
+            
+            return {
+                'total_users': total_users,
+                'active_users': active_users,
+                'recent_logins_30d': recent_logins,
+                'login_events_30d': login_events,
+                'users_by_provider': users_by_provider
+            }
+            
+        except Exception as e:
+            print(f"Error getting user statistics from Supabase: {e}")
+            return {
+                'total_users': 0,
+                'active_users': 0,
+                'recent_logins_30d': 0,
+                'login_events_30d': 0,
+                'users_by_provider': {}
+            }
+    
+    def _get_user_statistics_sqlite(self) -> dict:
+        """Get user statistics from SQLite (fallback)"""
         try:
             conn = sqlite3.connect(self.db_path)
             
@@ -440,7 +608,7 @@ class AuthManager:
             }
             
         except Exception as e:
-            print(f"Error getting user statistics: {e}")
+            print(f"Error getting user statistics from SQLite: {e}")
             return {
                 'total_users': 0,
                 'active_users': 0,
