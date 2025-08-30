@@ -54,6 +54,19 @@ class AuthManager:
     def _register_providers(self):
         """Register OAuth2 providers with their configurations"""
         
+        # Debug: Print all environment variables related to auth
+        print("🔍 Debug: All environment variables:")
+        import os
+        for key in sorted(os.environ.keys()):
+            if any(x in key.upper() for x in ['GOOGLE', 'SECRET', 'SESSION', 'FLASK']):
+                value = os.environ[key]
+                # Mask secrets but show first few chars
+                if 'SECRET' in key.upper():
+                    display_value = f"{value[:8]}..." if len(value) > 8 else "SET"
+                else:
+                    display_value = value
+                print(f"  {key} = {display_value}")
+        
         # Debug: Print environment variable status
         print(f"🔍 Debug: GOOGLE_CLIENT_ID = {os.getenv('GOOGLE_CLIENT_ID', 'NOT SET')}")
         print(f"🔍 Debug: GOOGLE_CLIENT_SECRET = {'SET' if os.getenv('GOOGLE_CLIENT_SECRET') else 'NOT SET'}")
