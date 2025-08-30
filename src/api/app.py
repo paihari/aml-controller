@@ -2312,7 +2312,15 @@ def auth_login_provider(provider):
             }), 400
         
         # Create redirect URI for this provider
-        redirect_uri = f"{request.host_url.rstrip('/')}/auth/callback/{provider}"
+        # Use environment variable if set, otherwise construct from request
+        if provider == 'google' and os.getenv('GOOGLE_REDIRECT_URI'):
+            redirect_uri = os.getenv('GOOGLE_REDIRECT_URI')
+        else:
+            # For production (Render), force HTTPS
+            host_url = request.host_url
+            if os.getenv('FLASK_ENV') == 'production' or 'onrender.com' in request.host:
+                host_url = host_url.replace('http://', 'https://')
+            redirect_uri = f"{host_url.rstrip('/')}/auth/callback/{provider}"
         
         # Initiate OAuth flow
         return oauth_client.authorize_redirect(redirect_uri)
