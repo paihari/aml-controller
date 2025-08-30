@@ -20,6 +20,50 @@ A **dynamic Anti-Money Laundering (AML) detection platform** that processes fina
 - ☁️ **Cloud-First Database** - Supabase PostgreSQL for transactions, alerts & sanctions with SQLite fallback
 - ⚡ **RESTful API** - Complete API for external integrations
 - 🔄 **Auto-Fallback System** - Seamless failover from cloud to local storage
+- 🔐 **Multi-Provider Authentication** - Secure OAuth2 login with Google, Microsoft, GitHub, Oracle
+- 🎨 **Creative Status Indicator** - Logo border color indicates system health
+- 🛡️ **Enterprise Security** - Role-based access control with audit logging
+
+---
+
+## 🔐 Authentication & Security
+
+### 🌟 **Multi-Provider OAuth2 Authentication**
+
+The AML Controller features enterprise-grade authentication with support for multiple identity providers, ensuring secure access to sensitive financial compliance data.
+
+#### 🎯 **Supported Providers**
+- 🔍 **Google** - Gmail and Google Workspace accounts
+- 🏢 **Microsoft Azure AD** - Corporate Microsoft accounts
+- 👥 **GitHub** - Developer and organization accounts  
+- ☁️ **Oracle Cloud** - Enterprise OCI identity domains
+
+#### 🎨 **Creative System Status Indicator**
+Instead of traditional status dots, the system uses the **company logo border color** as a subtle health indicator:
+
+| Status | Border Color | Condition |
+|--------|--------------|-----------|
+| 🟢 **Healthy** | Green | All APIs responding < 2s |
+| 🟡 **Warning** | Amber | Performance issues > 2s |
+| 🔴 **Critical** | Red | System failures detected |
+
+#### 🛡️ **Security Features**
+- ✅ **Server-side Sessions** - No sensitive data in browser cookies
+- ✅ **Role-Based Access Control** - User, Analyst, Manager, Admin roles
+- ✅ **Audit Logging** - Complete authentication event tracking
+- ✅ **Session Security** - Automatic timeout and secure headers
+- ✅ **Route Protection** - Dashboard requires authentication
+- ✅ **HTTPS Enforcement** - Secure production deployment
+
+#### 🚀 **Quick Start with Authentication**
+1. Visit [https://aml-controller.onrender.com](https://aml-controller.onrender.com)
+2. Click on any dashboard tile
+3. Choose your preferred login method (Google, Microsoft, GitHub, Oracle)
+4. Complete OAuth2 authentication flow
+5. Access secure dashboard with your user profile displayed
+
+#### 📖 **Implementation Documentation**
+Complete authentication implementation guide available at: [`docs/AUTHENTICATION_IMPLEMENTATION_GUIDE.md`](docs/AUTHENTICATION_IMPLEMENTATION_GUIDE.md)
 
 ---
 
@@ -28,11 +72,12 @@ A **dynamic Anti-Money Laundering (AML) detection platform** that processes fina
 **🌐 [View Dynamic AML System →](https://aml-controller.onrender.com/)**
 
 Experience the full dynamic AML platform with:
-- Real-time transaction processing
-- Live sanctions screening
-- Dynamic alert generation
-- Interactive risk analytics
-- Professional compliance dashboard
+- **Secure OAuth2 authentication** (Google, Microsoft, GitHub, Oracle)
+- Real-time transaction processing with user sessions
+- Live sanctions screening with audit trails
+- Dynamic alert generation with role-based access
+- Interactive risk analytics with user profiles
+- Professional compliance dashboard with creative status indicator
 
 ---
 
@@ -62,6 +107,7 @@ graph TB
     subgraph "Dynamic AML Platform"
         WebApp[🌐 Web Dashboard<br/>HTML/CSS/JavaScript]
         API[⚡ Flask API<br/>Python]
+        Auth[🔐 Authentication System<br/>OAuth2 Multi-Provider]
         DB[(🗄️ Hybrid Database<br/>Supabase + SQLite)]
         Engine[🔍 AML Engine<br/>Detection Rules]
         Generator[🎲 Transaction Generator<br/>Test Data Creation]
@@ -70,9 +116,13 @@ graph TB
     
     User[👤 Compliance Officer]
     ExtAPI[🌐 OpenSanctions API]
+    OAuth[🔑 OAuth Providers<br/>Google/Microsoft/GitHub/Oracle]
     
     User -->|HTTPS| WebApp
-    WebApp -->|REST API| API
+    WebApp -->|Authentication| Auth
+    Auth -->|OAuth2 Flow| OAuth
+    WebApp -->|Authenticated REST API| API
+    API --> Auth
     API --> DB
     API --> Engine
     API --> Generator
@@ -80,13 +130,16 @@ graph TB
     Loader -->|HTTPS/JSON| ExtAPI
     Engine --> DB
     Generator --> DB
+    Auth --> DB
     
     style WebApp fill:#e3f2fd
     style API fill:#f3e5f5
+    style Auth fill:#ffcdd2
     style DB fill:#e8f5e8
     style Engine fill:#fff3e0
     style Generator fill:#fce4ec
     style Loader fill:#e0f2f1
+    style OAuth fill:#e1bee7
 ```
 
 ### Level 3: Component Diagram - AML Engine
@@ -142,6 +195,12 @@ aml-controller/
 │   ├── api/
 │   │   ├── app.py                  # Main Flask API
 │   │   └── app_production.py       # Production API Server
+│   ├── auth/                       # 🔐 Authentication System
+│   │   ├── __init__.py             # Auth module exports
+│   │   ├── models.py               # User and session models
+│   │   ├── auth_manager.py         # OAuth2 provider management
+│   │   ├── middleware.py           # Session and route protection
+│   │   └── decorators.py           # Authentication decorators
 │   ├── core/
 │   │   ├── dynamic_aml_engine.py   # AML Detection Engine
 │   │   ├── sanctions_loader.py     # OpenSanctions Integration
@@ -163,6 +222,7 @@ aml-controller/
 │   ├── supabase_schema.sql         # Database Schema
 │   └── *.sh                        # Deployment Scripts
 ├── 📚 Documentation (docs/)
+│   ├── AUTHENTICATION_IMPLEMENTATION_GUIDE.md  # Complete auth setup guide
 │   ├── DEVELOPMENT_NOTES.md        # Development History
 │   ├── OPENSANCTIONS_C4_DIAGRAM.md # System Architecture
 │   ├── OPENSANCTIONS_DESIGN.md     # Technical Design
@@ -389,28 +449,39 @@ def process_transaction(self, transaction_data):
 
 ### 📡 **Core Endpoints**
 
-| Endpoint | Method | Description | Response |
-|----------|--------|-------------|----------|
-| `/api/health` | GET | System health check | Status and version |
-| `/api/statistics` | GET | System statistics | Counts and metrics |
-| `/api/alerts` | GET | Active alerts list | Alert details with evidence |
-| `/api/transactions` | GET | Recent transactions | Transaction history with status filtering |
-| `/api/transactions` | POST | Process single transaction | Generated alerts |
-| `/api/transactions/process` | POST | Process pending transactions | Batch processing of PENDING → COMPLETED/UNDER_REVIEW |
-| `/api/transactions/batch` | POST | Process transaction batch | Batch processing results |
-| `/api/generate/process` | GET/POST | Generate test data | Sample transactions and alerts |
-| `/api/sanctions/search` | GET | Search sanctions by name | Matching entries |
-| `/api/sanctions/refresh` | POST | Refresh sanctions data | Updated counts |
-| `/api/dashboard/data` | GET | Complete dashboard data | All data for frontend |
+| Endpoint | Method | Description | Response | Auth Required |
+|----------|--------|-------------|----------|---------------|
+| `/api/health` | GET | System health check | Status and version | ❌ Public |
+| `/api/statistics` | GET | System statistics | Counts and metrics | ❌ Public |
+| `/auth/login` | GET | OAuth provider selection | Login page | ❌ Public |
+| `/auth/login/<provider>` | GET | Initiate OAuth flow | OAuth redirect | ❌ Public |
+| `/auth/callback/<provider>` | GET | OAuth callback handler | Session creation | ❌ Public |
+| `/auth/logout` | POST | User logout | Session cleanup | ✅ Required |
+| `/api/auth/user` | GET | Current user info | User profile data | ✅ Required |
+| `/api/alerts` | GET | Active alerts list | Alert details with evidence | ✅ Required |
+| `/api/transactions` | GET | Recent transactions | Transaction history with status filtering | ✅ Required |
+| `/api/transactions` | POST | Process single transaction | Generated alerts | ✅ Required |
+| `/api/transactions/process` | POST | Process pending transactions | Batch processing results | ✅ Required |
+| `/api/transactions/batch` | POST | Process transaction batch | Batch processing results | ✅ Required |
+| `/api/generate/process` | GET/POST | Generate test data | Sample transactions and alerts | ✅ Required |
+| `/api/sanctions/search` | GET | Search sanctions by name | Matching entries | ✅ Required |
+| `/api/sanctions/refresh` | POST | Refresh sanctions data | Updated counts | ✅ Admin Only |
+| `/api/dashboard/data` | GET | Complete dashboard data | All data for frontend | ✅ Required |
 
 ### 🔧 **Example API Usage**
 
 ```javascript
-// Fetch system statistics
+// Public API - No authentication required
 const stats = await fetch('/api/statistics').then(r => r.json());
 console.log(`Active alerts: ${stats.data.active_alerts}`);
 
-// Process a transaction
+// Get current authenticated user
+const user = await fetch('/api/auth/user', {
+    credentials: 'include'  // Include session cookie
+}).then(r => r.json());
+console.log(`Logged in as: ${user.user.name} (${user.user.email})`);
+
+// Process a transaction (requires authentication)
 const transaction = {
     transaction_id: "TXN_001",
     amount: 50000,
@@ -424,10 +495,17 @@ const transaction = {
 const result = await fetch('/api/transactions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(transaction)
+    body: JSON.stringify(transaction),
+    credentials: 'include'  // Include session cookie for authentication
 }).then(r => r.json());
 
 console.log(`Generated ${result.alerts_generated} alerts`);
+
+// Logout user
+await fetch('/auth/logout', {
+    method: 'POST',
+    credentials: 'include'
+});
 ```
 
 ---
@@ -586,6 +664,47 @@ CREATE TABLE alerts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Users table (Authentication)
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    provider TEXT NOT NULL, -- 'google', 'microsoft', 'github', 'oracle'
+    provider_user_id TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    avatar_url TEXT,
+    role TEXT DEFAULT 'user', -- 'user', 'analyst', 'manager', 'admin'
+    last_login TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT TRUE,
+    UNIQUE(provider, provider_user_id)
+);
+
+-- User sessions table
+CREATE TABLE user_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_id TEXT UNIQUE NOT NULL,
+    access_token TEXT,
+    refresh_token TEXT,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Authentication audit log
+CREATE TABLE auth_audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    event_type TEXT NOT NULL, -- 'LOGIN', 'LOGOUT', 'SESSION_EXPIRED', etc.
+    provider TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Sanctions table
 CREATE TABLE sanctions (
     id BIGSERIAL PRIMARY KEY,
@@ -615,14 +734,26 @@ CREATE INDEX idx_sanctions_name ON sanctions(name);
 CREATE INDEX idx_sanctions_name_normalized ON sanctions(name_normalized);
 CREATE INDEX idx_sanctions_entity_id ON sanctions(entity_id);
 CREATE INDEX idx_sanctions_name_search ON sanctions USING gin(to_tsvector('english', name));
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_provider ON users(provider, provider_user_id);
+CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_session_id ON user_sessions(session_id);
+CREATE INDEX idx_auth_audit_user_id ON auth_audit_log(user_id);
+CREATE INDEX idx_auth_audit_event_type ON auth_audit_log(event_type);
 
 -- Row Level Security
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sanctions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE auth_audit_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all operations on transactions" ON transactions FOR ALL USING (true);
 CREATE POLICY "Allow all operations on alerts" ON alerts FOR ALL USING (true);
 CREATE POLICY "Allow all operations on sanctions" ON sanctions FOR ALL USING (true);
+CREATE POLICY "Allow all operations on users" ON users FOR ALL USING (true);
+CREATE POLICY "Allow all operations on user_sessions" ON user_sessions FOR ALL USING (true);
+CREATE POLICY "Allow all operations on auth_audit_log" ON auth_audit_log FOR ALL USING (true);
 ```
 
 ### 📋 **SQLite Schema (Fallback)**
@@ -733,6 +864,14 @@ docker run -p 5001:5000 dynamic-aml-system
 - **Requests** - HTTP client for external APIs
 - **Faker** - Realistic test data generation
 
+### **Authentication & Security**
+- ![OAuth2](https://img.shields.io/badge/OAuth2-Multi--Provider-orange) **Authlib** - OAuth2 authentication framework
+- ![Sessions](https://img.shields.io/badge/Sessions-Server--Side-purple) **Flask-Session** - Secure session management
+- ![Security](https://img.shields.io/badge/Security-HTTPS-green) **Flask-Talisman** - Security headers and HTTPS enforcement
+- ![Rate Limiting](https://img.shields.io/badge/Rate-Limiting-red) **Flask-Limiter** - API abuse prevention
+- **PyJWT** - JSON Web Token handling
+- **Redis** - Session storage (production)
+
 ### **Frontend Dashboard**
 - ![HTML5](https://img.shields.io/badge/HTML5-Modern-orange?logo=html5) **HTML5/CSS3** - Responsive interface
 - ![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-yellow?logo=javascript) **JavaScript ES6+** - Interactive features
@@ -748,11 +887,17 @@ docker run -p 5001:5000 dynamic-aml-system
 ## 🔐 Security & Compliance
 
 ### 🛡️ **Security Features**
-- ✅ **HTTPS Enforcement** - Secure data transmission
-- ✅ **Input Validation** - SQL injection prevention
-- ✅ **Error Handling** - Graceful failure management
+- ✅ **Multi-Provider OAuth2** - Secure authentication with Google, Microsoft, GitHub, Oracle
+- ✅ **Server-Side Sessions** - Secure session management with Redis/filesystem storage
+- ✅ **Role-Based Access Control** - Granular permissions (User, Analyst, Manager, Admin)
+- ✅ **Authentication Audit Logging** - Complete security event tracking
+- ✅ **HTTPS Enforcement** - Secure data transmission with automatic redirect
+- ✅ **Route Protection** - Authentication required for sensitive endpoints
+- ✅ **Session Security** - Signed cookies, CSRF protection, secure headers
+- ✅ **Input Validation** - SQL injection and XSS prevention
+- ✅ **Error Handling** - Graceful failure management without information disclosure
 - ✅ **CORS Protection** - Cross-origin request security
-- ✅ **Rate Limiting** - API abuse prevention
+- ✅ **Rate Limiting** - API abuse prevention with configurable thresholds
 
 ### 📋 **Regulatory Compliance**
 - **BSA/AML** - US Bank Secrecy Act compliance
